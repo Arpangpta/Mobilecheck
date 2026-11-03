@@ -30,7 +30,7 @@ Files:
 2. Chrome menu ⋮ → tick **Desktop site** (the script editor needs it).
 3. In the sheet: **Extensions → Apps Script**.
 4. Delete what's there and paste everything from [`apps-script/Code.gs`](apps-script/Code.gs).
-5. On the `SECRET` line, replace `change-me-to-something-only-you-know` with your own password-like word. Save (💾).
+5. Save (💾). Nothing to edit – it works as pasted.
 6. **Deploy → New deployment** → gear ⚙ → **Web app**.
    - Execute as: **Me**
    - Who has access: **Anyone**
@@ -46,10 +46,10 @@ Files:
 ### C. Start the old phone
 1. Make a link like this (put your values in):
    ```
-   https://arpangpta.github.io/Mobilecheck/?endpoint=PASTE_WEB_APP_URL&key=YOUR_SECRET&room=bedroom
+   https://arpangpta.github.io/Mobilecheck/?endpoint=PASTE_WEB_APP_URL&room=bedroom
    ```
    Send it to yourself (Gmail / Google Keep / WhatsApp) and open it on the old phone **in Chrome**.
-   (Or open the plain page and type the values into **Settings**.)
+   (Or open the plain page and paste the URL into **Settings**. The secret key is created automatically.)
 2. Tap **Send test row** → a row should appear in the sheet's **Readings** tab within a few seconds.
 3. Tap **▶ Start sensing** and **Allow** microphone (and camera if you turned on Light).
 4. Phone settings so it keeps running:

@@ -1,12 +1,13 @@
 /**
  * Room Sensor - receiver for the Google Sheet.
  *
- * Paste this whole file into Extensions > Apps Script of your Google Sheet,
- * change SECRET below, then Deploy > New deployment > Web app
- * (Execute as: Me, Who has access: Anyone).
+ * Paste this whole file as-is into Extensions > Apps Script of your Google Sheet,
+ * then Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
+ * Nothing to edit: the first phone that sends data registers its secret key,
+ * and after that only that phone's key is accepted.
+ * (To allow a new phone: Project Settings > Script properties > delete PHONE_KEY.)
  */
 
-var SECRET = 'change-me-to-something-only-you-know';
 var SHEET_NAME = 'Readings';
 var HEADERS = ['time', 'room', 'event', 'motion_avg', 'motion_max', 'moving_secs',
                'noise_avg', 'noise_max', 'light', 'battery', 'charging', 'received_at'];
@@ -18,7 +19,7 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: 'bad json' });
   }
-  if (data.key !== SECRET) return json_({ ok: false, error: 'wrong key' });
+  if (!checkKey_(data.key)) return json_({ ok: false, error: 'wrong key' });
 
   var rows = data.rows || [];
   if (!rows.length) return json_({ ok: true, added: 0 });
@@ -42,6 +43,14 @@ function doPost(e) {
 function doGet() {
   return ContentService.createTextOutput('Room Sensor receiver is running. Rows so far: ' +
     Math.max(0, getSheet_().getLastRow() - 1));
+}
+
+function checkKey_(key) {
+  if (!key) return false;
+  var props = PropertiesService.getScriptProperties();
+  var saved = props.getProperty('PHONE_KEY');
+  if (!saved) { props.setProperty('PHONE_KEY', key); return true; }
+  return saved === key;
 }
 
 function getSheet_() {

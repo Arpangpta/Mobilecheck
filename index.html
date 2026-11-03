@@ -59,7 +59,7 @@
 <div class="card hidden" id="setup">
   <b>Settings</b>
   <label>Google Apps Script URL<br><input type="text" id="inEndpoint" placeholder="https://script.google.com/macros/s/.../exec"></label>
-  <label>Secret key (same as in Code.gs)<br><input type="text" id="inKey" placeholder="my-secret"></label>
+  <label>Secret key (filled in automatically &ndash; no need to change)<br><input type="text" id="inKey"></label>
   <label>Room name<br><input type="text" id="inRoom" placeholder="bedroom"></label>
   <label><input type="checkbox" id="useMotion" checked> Movement (motion sensor)</label>
   <label><input type="checkbox" id="useNoise" checked> Noise level (microphone &ndash; only loudness, nothing is recorded)</label>
@@ -112,6 +112,10 @@
   function fillSetup() {
     $('inEndpoint').value = cfg.endpoint; $('inKey').value = cfg.key; $('inRoom').value = cfg.room;
     $('useMotion').checked = cfg.motion; $('useNoise').checked = cfg.noise; $('useLight').checked = cfg.light;
+  }
+  if (!cfg.key) {  // auto-create a random key the first time; the sheet remembers it
+    cfg.key = 'k' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    sset('rs_key', cfg.key);
   }
   fillSetup();
   if (!cfg.endpoint) { $('setup').className = 'card'; log('First time: fill in Settings, then Save.'); }
