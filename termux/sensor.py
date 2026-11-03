@@ -14,7 +14,7 @@ HOME = os.path.expanduser("~/.room-sensor")
 CONF = os.path.join(HOME, "config.json")
 QUEUE = os.path.join(HOME, "queue.json")
 MOVE_SENSOR = "Linear Acceleration"
-LIGHT_SENSOR = "stk3x1x alsprx"
+DEFAULT_LIGHT = "stk3x1x alsprx -Wakeup Secondary"   # changed by `room-sensor find-light`
 SAMPLE_MS = 200            # 5 readings per second
 MOVE_THRESHOLD = 0.3       # m/s^2 of linear acceleration that counts as movement
 ROW_EVERY = 60             # seconds
@@ -136,11 +136,10 @@ def battery():
     return b.get("percentage"), charging
 
 
-def parse_reading(pairs):
-    """pairs: list of (sensor name, data) from one termux-sensor JSON object.
-    The light chip appears twice under the same name (light + proximity)."""
+def parse_reading(pairs, light_name):
+    """pairs: list of (sensor name, data) from one termux-sensor JSON object."""
     move = None
-    alsprx = []
+    light = None
     for name, data in pairs:
         if isinstance(data, list):          # nested objects also arrive as (key, value) pairs
             data = dict(data)
@@ -150,18 +149,22 @@ def parse_reading(pairs):
         if name.startswith(MOVE_SENSOR) and move is None:
             x, y, z = (list(vals) + [0, 0, 0])[:3]
             move = (x * x + y * y + z * z) ** 0.5
-        elif name.startswith(LIGHT_SENSOR):
-            alsprx.append(vals[0])
-    return move, alsprx
+        elif name == light_name and light is None:
+            light = vals[0]
+    return move, light
 
 
-def sensor_stream(on_reading, stop):
-    """Runs termux-sensor continuously and calls on_reading(move, alsprx)."""
+current_proc = [None]
+
+
+def sensor_stream(on_reading, stop, light_name):
+    """Runs termux-sensor continuously and calls on_reading(move, light)."""
     dec = json.JSONDecoder(object_pairs_hook=lambda p: p)
     while not stop.is_set():
         subprocess.run(["termux-sensor", "-c"], capture_output=True)
-        p = subprocess.Popen(["termux-sensor", "-s", MOVE_SENSOR + "," + LIGHT_SENSOR, "-d", str(SAMPLE_MS)],
+        p = subprocess.Popen(["termux-sensor", "-s", MOVE_SENSOR + "," + light_name, "-d", str(SAMPLE_MS)],
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        current_proc[0] = p
         buf = ""
         try:
             for line in p.stdout:
@@ -179,7 +182,7 @@ def sensor_stream(on_reading, stop):
                         break
                     buf = s[end:]
                     if obj:
-                        on_reading(*parse_reading(obj))
+                        on_reading(*parse_reading(obj, light_name))
         finally:
             p.kill()
             subprocess.run(["termux-sensor", "-c"], capture_output=True)
@@ -226,19 +229,21 @@ def run(conf):
     if not conf["endpoint"]:
         sys.exit("No sheet URL yet. Run:  room-sensor url https://script.google.com/.../exec")
     acc = Acc()
-    li = int(conf.get("light_index", 0))
+    light_name = conf.get("light_sensor") or DEFAULT_LIGHT
+    last_seen = [time.time()]
 
-    def on_reading(move, alsprx):
+    def on_reading(move, light):
+        last_seen[0] = time.time()
         with acc.lock:
             if move is not None:
                 sec = int(time.time())
                 acc.sec_vals[sec] = max(acc.sec_vals.get(sec, 0.0), move)
-            if len(alsprx) > li:
-                acc.light_sum += alsprx[li]
+            if light is not None:
+                acc.light_sum += light
                 acc.light_n += 1
 
     stop = threading.Event()
-    threading.Thread(target=sensor_stream, args=(on_reading, stop), daemon=True).start()
+    threading.Thread(target=sensor_stream, args=(on_reading, stop, light_name), daemon=True).start()
     batt = battery()
     log("Room sensor started (room: %s). Battery %s%%, charging: %s" % (conf["room"], batt[0], batt[1]))
     enqueue(make_row(conf, acc, "started", batt))
@@ -247,6 +252,10 @@ def run(conf):
     try:
         while True:
             time.sleep(BATTERY_EVERY)
+            if time.time() - last_seen[0] > 90 and current_proc[0]:
+                log("No sensor data for 90 s; restarting the sensor reader.")
+                last_seen[0] = time.time()
+                current_proc[0].kill()
             new = battery()
             if new[1] is not None and batt[1] is not None and new[1] != batt[1]:
                 ev = "power_back" if new[1] else "power_cut"
@@ -266,33 +275,66 @@ def run(conf):
         log("Stopped.")
 
 
-def check(conf):
-    print("Reading sensors (5 s)...")
-    out = subprocess.run(["termux-sensor", "-s", MOVE_SENSOR + "," + LIGHT_SENSOR, "-n", "3", "-d", "1000"],
+def read_once(names, samples=3):
+    """Returns {sensor name: last first-value} for the given sensor names."""
+    out = subprocess.run(["termux-sensor", "-s", ",".join(names), "-n", str(samples), "-d", "700"],
                          capture_output=True, text=True, timeout=60).stdout
     subprocess.run(["termux-sensor", "-c"], capture_output=True)
     dec = json.JSONDecoder(object_pairs_hook=lambda p: p)
-    s, last = out.strip(), None
+    s, res = out.strip(), {}
     while s:
         try:
             obj, end = dec.raw_decode(s)
         except ValueError:
             break
-        if obj:
-            last = obj
+        for name, data in obj or []:
+            if isinstance(data, list):
+                data = dict(data)
+            vals = data.get("values") if isinstance(data, dict) else None
+            if vals:
+                res[name] = vals[0] if name != MOVE_SENSOR else sum(v * v for v in vals[:3]) ** 0.5
         s = s[end:].lstrip()
-    if not last:
-        print("No sensor data. Is the Termux:API app installed and allowed to run?")
-        return
-    move, alsprx = parse_reading(last)
-    li = int(conf.get("light_index", 0))
-    print("Movement: %s" % (None if move is None else round(move, 3)))
-    for i, v in enumerate(alsprx):
-        print("Light chip value %d: %s%s" % (i, v, "   <- used as LIGHT" if i == li else ""))
+    return res
+
+
+def check(conf):
+    light_name = conf.get("light_sensor") or DEFAULT_LIGHT
+    print("Reading sensors (a few seconds)...")
+    r = read_once([MOVE_SENSOR, light_name])
+    print("Movement: %s" % (round(r[MOVE_SENSOR], 3) if MOVE_SENSOR in r else "no data"))
+    print("Light (%s): %s" % (light_name, r.get(light_name, "no data")))
     pct, ch = battery()
     print("Battery: %s%%  charging: %s" % (pct, ch))
-    print("\nTip: cover the top of the phone (near the earpiece) and run check again.\n"
-          "The LIGHT value should drop. If the other one drops instead, run:  room-sensor swap-light")
+    print("\nIf light looks wrong (stuck at 0 or 5), run:  room-sensor find-light")
+
+
+def find_light(conf):
+    lst = termux_json(["termux-sensor", "-l"]) or {}
+    names = []
+    for n in lst.get("sensors", []):
+        if ("alsprx" in n.lower() or "light" in n.lower()) and n not in names:
+            names.append(n)
+    if not names:
+        print("No light sensor found on this phone.")
+        return
+    print("Keep the phone face-up with the room light ON. Testing %d sensors..." % len(names))
+    found = {}
+    for n in names:
+        v = read_once([n]).get(n)
+        found[n] = v
+        print("  %-40s -> %s" % (n, v))
+    def prox_like(v):
+        return v is None or abs(v) < 0.01 or abs(v - 5.0) < 0.01 or abs(v - 5.0003) < 0.001
+    good = [(v, n) for n, v in found.items() if not prox_like(v)]
+    if not good:
+        print("\nCould not tell which one is light (all look like proximity: 0 or 5).\n"
+              "Turn the room light on / hold under a lamp and run  room-sensor find-light  again,\n"
+              "or send a screenshot of this list.")
+        return
+    best = max(good)[1]
+    conf["light_sensor"] = best
+    save_conf(conf)
+    print("\nUsing '%s' as the LIGHT sensor (value %s). Saved." % (best, found[best]))
 
 
 def test(conf):
@@ -309,6 +351,6 @@ def test(conf):
 if __name__ == "__main__":
     c = load_conf()
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    fn = {"run": run, "check": check, "test": test}.get(cmd)
+    fn = {"run": run, "check": check, "test": test, "find-light": find_light}.get(cmd)
     if fn:
         fn(c)

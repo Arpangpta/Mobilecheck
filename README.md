@@ -85,7 +85,7 @@ room-sensor start
 | `room-sensor start` / `stop` | start / stop sensing in the background |
 | `room-sensor status` | is it running + recent log |
 | `room-sensor room bedroom` | set the room name |
-| `room-sensor swap-light` | if the light value looks wrong (the light chip also has a proximity value) |
+| `room-sensor find-light` | detects which sensor is the real light sensor (run with the room light on) |
 | `room-sensor update` | get the latest version |
 
 If `test` says **wrong key**: the sheet is locked to the phone that sent first. In Apps Script open

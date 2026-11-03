@@ -37,7 +37,12 @@ case "$1" in
   status)
     if running; then echo "RUNNING"; else echo "NOT running (start it with: room-sensor start)"; fi
     echo "--- last log lines ---"; tail -n 15 "$LOG" 2>/dev/null ;;
-  check) python "$DIR/sensor.py" check ;;
+  check|find-light|swap-light)
+    # the sensor reader must be paused while we read sensors directly
+    was=0; if running; then was=1; "$0" stop >/dev/null; fi
+    cmd="$1"; [ "$cmd" = swap-light ] && cmd=find-light
+    python "$DIR/sensor.py" "$cmd"
+    if [ $was = 1 ]; then "$0" start; fi ;;
   test)  python "$DIR/sensor.py" test ;;
   url)   U="$2"
          if [ -z "$U" ]; then
@@ -52,7 +57,6 @@ case "$1" in
          esac ;;
   room)  [ -z "$2" ] && { echo "Usage: room-sensor room bedroom"; exit 1; }
          setconf room "$2" ;;
-  swap-light) setconf light_index x ;;
   update) exec bash -c "curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash" ;;
   *)
     cat <<'TXT'
@@ -65,7 +69,7 @@ room-sensor commands:
   room-sensor start       start sensing in the background
   room-sensor status      is it running? show recent log
   room-sensor stop        stop sensing
-  room-sensor swap-light  use the other light-chip value as light
+  room-sensor find-light  detect which sensor is the real light sensor
   room-sensor update      download the latest version
 TXT
     ;;
