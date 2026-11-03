@@ -107,13 +107,27 @@ write_status() {
 }
 
 watch_loop() {  # runs in background: status every minute, site updates every 15 min, restarts dead parts
-  local n=0
+  local n=0 fails=0 u
   while true; do
     write_status
     if ! alive "$DATA/nginx.pid"; then say "nginx stopped; restarting."; nginx -c "$CONF"; fi
-    if ! alive "$DATA/tunnel.pid"; then say "Tunnel stopped; restarting (the public URL will change)."; start_tunnel; fi
+    if ! alive "$DATA/tunnel.pid"; then say "Tunnel stopped; restarting (the public URL will change)."; start_tunnel; fails=0; fi
+    # every 5 minutes, check the public address really works (the tunnel can stay "running" but disconnected)
+    if [ $((n % 5)) -eq 4 ]; then
+      u="$(tunnel_url)"
+      if [ -n "$u" ] && [ $(( $(date +%s) - $(stat -c %Y "$DATA/tunnel.pid") )) -gt 180 ]; then
+        if curl -fs -m 25 -o /dev/null "$u/status.json"; then fails=0
+        else
+          fails=$((fails+1)); say "Public address not answering ($fails/2)."
+          if [ "$fails" -ge 2 ]; then
+            say "Restarting the tunnel - the public address will change. See: phone-server url"
+            kill "$(cat "$DATA/tunnel.pid")" 2>/dev/null; sleep 2; start_tunnel; fails=0
+          fi
+        fi
+      fi
+    fi
     n=$((n+1)); if [ $((n % 15)) -eq 0 ]; then update_all; fi
-    sleep 60
+    sleep "${PHONE_SERVER_TICK:-60}"
   done
 }
 
