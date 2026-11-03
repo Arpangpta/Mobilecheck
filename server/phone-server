@@ -93,7 +93,7 @@ update_all() {
 # ---------- tunnel & status ----------
 start_tunnel() {
   : > "$DATA/tunnel.log"
-  nohup cloudflared tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$PORT" >> "$DATA/tunnel.log" 2>&1 &
+  nohup cloudflared tunnel --no-autoupdate --protocol http2 --edge-ip-version 4 --url "http://127.0.0.1:$PORT" >> "$DATA/tunnel.log" 2>&1 &
   echo $! > "$DATA/tunnel.pid"
 }
 
@@ -167,6 +167,7 @@ case "$1" in
 
   status)
     for p in nginx tunnel watch; do printf "%-8s %s\n" "$p" "$(alive "$DATA/$p.pid" && echo running || echo STOPPED)"; done
+    echo "local    $(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$PORT/" | sed 's/^200$/OK (200)/;s/^000$/NOT ANSWERING/')"
     echo "address  $(tunnel_url)"
     echo "home     $(cat "$HOMEF" 2>/dev/null)"
     echo "sites:"; while IFS=$'\t' read -r name repo branch sub; do [ -n "$name" ] && echo "  /$name/  <- $repo ($branch) ${sub}"; done < "$LIST" ;;
