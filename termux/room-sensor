@@ -39,8 +39,17 @@ case "$1" in
     echo "--- last log lines ---"; tail -n 15 "$LOG" 2>/dev/null ;;
   check) python "$DIR/sensor.py" check ;;
   test)  python "$DIR/sensor.py" test ;;
-  url)   [ -z "$2" ] && { echo "Usage: room-sensor url https://script.google.com/.../exec"; exit 1; }
-         setconf endpoint "$2" ;;
+  url)   U="$2"
+         if [ -z "$U" ]; then
+           echo "Reading the URL from the clipboard..."
+           U="$(termux-clipboard-get 2>/dev/null | tr -d '[:space:]')"
+         fi
+         case "$U" in
+           https://script.google.com/*) setconf endpoint "$U" ;;
+           *) echo "That doesn't look like your Apps Script URL. Got: '${U:0:60}'"
+              echo "Copy the URL (it starts with https://script.google.com/ and ends with /exec)"
+              echo "on THIS phone, then run:  room-sensor url"; exit 1 ;;
+         esac ;;
   room)  [ -z "$2" ] && { echo "Usage: room-sensor room bedroom"; exit 1; }
          setconf room "$2" ;;
   swap-light) setconf light_index x ;;
@@ -48,7 +57,8 @@ case "$1" in
   *)
     cat <<'TXT'
 room-sensor commands:
-  room-sensor url <URL>   save your Google Apps Script URL (ends in /exec)
+  room-sensor url         save the Apps Script URL you copied (from the clipboard)
+  room-sensor url <URL>   ...or type it after the command
   room-sensor room <name> set the room name (e.g. bedroom)
   room-sensor test        send one test row to the sheet
   room-sensor check       show current sensor values

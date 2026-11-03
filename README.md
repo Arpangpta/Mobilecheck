@@ -73,7 +73,7 @@ Google Sheet (noise is left empty in this version).
 In Termux:
 ```
 curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash
-room-sensor url PASTE_YOUR_EXEC_URL
+room-sensor url        (after copying your /exec URL on this phone)
 room-sensor test
 room-sensor start
 ```
