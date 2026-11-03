@@ -1,0 +1,182 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# phone-ai: run a small open-source language model (llama.cpp) on this phone,
+# served at <your website>/ai/ (chat page) and <your website>/ai/v1/ (OpenAI-style API).
+
+AI="${PHONE_AI_DATA:-$HOME/.phone-ai}"
+PS_DATA="${PHONE_SERVER_DATA:-$HOME/.phone-server}"
+HF="${HF_BASE:-https://huggingface.co}"
+PORT="${PHONE_AI_PORT:-8081}"
+RAW="https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor"
+mkdir -p "$AI/models" "$AI/www"
+
+# name | Hugging Face repo | file pattern | about
+CATALOG='qwen|Qwen/Qwen2.5-0.5B-Instruct-GGUF|q4_k_m.gguf|Qwen2.5 0.5B - best balance (default, ~400 MB)
+llama|bartowski/Llama-3.2-1B-Instruct-GGUF|Q4_K_M.gguf|Meta Llama 3.2 1B - smarter, slow on this phone (~800 MB)
+smollm|HuggingFaceTB/SmolLM2-360M-Instruct-GGUF|q8_0.gguf|SmolLM2 360M - faster, simpler answers (~380 MB)
+gemma|ggml-org/gemma-3-270m-it-GGUF|Q8_0.gguf|Google Gemma 3 270M - fast, short tasks (~290 MB)
+tiny|HuggingFaceTB/SmolLM2-135M-Instruct-GGUF|q8_0.gguf|SmolLM2 135M - fastest, often wrong (~145 MB)'
+
+say() { echo "$(date +%H:%M:%S) $*"; }
+alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+conf_get() { [ -f "$AI/$1" ] && cat "$AI/$1" || echo "$2"; }
+
+key() {
+  if [ ! -s "$AI/key" ]; then
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 24 > "$AI/key"
+  fi
+  cat "$AI/key"
+}
+
+# ---------- models ----------
+model_line() { echo "$CATALOG" | grep "^$1|"; }
+
+resolve_file() {  # repo pattern -> exact file name in that repo (asks Hugging Face for the file list)
+  curl -fsSL "$HF/api/models/$1" 2>/dev/null | jq -r '.siblings[].rfilename' 2>/dev/null \
+    | grep -i -- "$2\$" | grep -iv 'mmproj' | head -n 1
+}
+
+download_model() {  # name -> prints path of downloaded model
+  local line repo pat file out
+  line="$(model_line "$1")"
+  if [ -z "$line" ]; then echo "Unknown model '$1'. See: phone-ai models" >&2; return 1; fi
+  repo="$(echo "$line" | cut -d'|' -f2)"; pat="$(echo "$line" | cut -d'|' -f3)"
+  echo "Looking up $repo on Hugging Face..." >&2
+  file="$(resolve_file "$repo" "$pat")"
+  if [ -z "$file" ]; then echo "Could not find a '$pat' file in $repo (no internet, or the repo changed)." >&2; return 1; fi
+  out="$AI/models/$file"
+  echo "$file" > "$AI/file-$1"
+  if [ -s "$out" ] && [ ! -f "$out.part" ]; then echo "$out"; return 0; fi
+  echo "Downloading $file (you can stop with CTRL+C and run again to resume)..." >&2
+  touch "$out.part"
+  if curl -fL --progress-bar -C - "$HF/$repo/resolve/main/$file" -o "$out"; then rm -f "$out.part"; echo "$out"
+  else echo "Download failed. Run the same command again to resume." >&2; return 1; fi
+}
+
+current_model_path() {  # path of the downloaded file for the chosen model, if complete
+  local name f; name="$(conf_get model qwen)"
+  f="$(conf_get "file-$name" "")"
+  [ -n "$f" ] && [ -s "$AI/models/$f" ] && [ ! -f "$AI/models/$f.part" ] && echo "$AI/models/$f"
+}
+
+# ---------- nginx endpoint ----------
+write_endpoint() {
+  mkdir -p "$PS_DATA/extra.d"
+  cat > "$PS_DATA/extra.d/ai.conf" <<EOF
+    location = /ai { return 301 /ai/; }
+    location = /ai/ { root $AI/www; try_files /index.html =404; add_header Cache-Control no-cache; }
+    location = /ai/health { proxy_pass http://127.0.0.1:$PORT/health; }
+    location /ai/v1/ {
+      proxy_pass http://127.0.0.1:$PORT/v1/;
+      proxy_http_version 1.1;
+      proxy_buffering off;
+      proxy_read_timeout 900s;
+      proxy_set_header Connection "";
+      client_max_body_size 64k;
+    }
+EOF
+  command -v phone-server >/dev/null && phone-server reload >/dev/null 2>&1
+}
+
+# ---------- safety guard (heat + idle) ----------
+guard_loop() {
+  local idle_min max_temp last_count count last_active now t
+  idle_min="$(conf_get idle 30)"; max_temp="$(conf_get maxtemp 45)"
+  last_count=-1; last_active=$(date +%s)
+  while alive "$AI/server.pid"; do
+    sleep "${PHONE_AI_GUARD_SLEEP:-30}"
+    t="$(termux-battery-status 2>/dev/null | jq -r '.temperature // empty' 2>/dev/null | cut -d. -f1)"
+    if [ -n "$t" ] && [ "$t" -ge "$max_temp" ]; then
+      say "Phone is ${t}°C (limit ${max_temp}°C) - stopping the AI to cool down."
+      kill "$(cat "$AI/server.pid")"; break
+    fi
+    count="$(grep -c ' /ai/v1/' "$PS_DATA/access.log" 2>/dev/null || echo 0)"
+    now=$(date +%s)
+    if [ "$count" != "$last_count" ]; then last_count="$count"; last_active=$now; fi
+    if [ "$idle_min" != "0" ] && [ $((now - last_active)) -ge $((idle_min * 60)) ]; then
+      say "No AI use for $idle_min min - stopping to save battery and heat."
+      kill "$(cat "$AI/server.pid")"; break
+    fi
+  done
+  rm -f "$AI/server.pid" "$AI/guard.pid"
+}
+
+# ---------- commands ----------
+case "$1" in
+  start)
+    if alive "$AI/server.pid"; then echo "AI already running."; exit 0; fi
+    command -v llama-server >/dev/null || { echo "llama.cpp is missing. Run:  pkg install llama-cpp"; exit 1; }
+    m="$(current_model_path)"
+    [ -z "$m" ] && { m="$(download_model "$(conf_get model qwen)")" || exit 1; }
+    [ "$2" = "--always" ] && echo 0 > "$AI/idle"
+    write_endpoint
+    threads="$(conf_get threads 4)"
+    : > "$AI/server.log"
+    nohup llama-server -m "$m" --host 127.0.0.1 --port "$PORT" -t "$threads" -c 2048 -np 1 \
+      --api-key "$(key)" --alias "$(conf_get model qwen)" >> "$AI/server.log" 2>&1 &
+    echo $! > "$AI/server.pid"
+    nohup "$0" _guard >> "$AI/guard.log" 2>&1 &
+    echo $! > "$AI/guard.pid"
+    echo "Loading $(basename "$m") with $threads cores..."
+    for _ in $(seq 90); do
+      curl -fs "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q ok && break
+      alive "$AI/server.pid" || { echo "The AI stopped while loading:"; tail -n 8 "$AI/server.log"; exit 1; }
+      sleep 2
+    done
+    u="$(command -v phone-server >/dev/null && phone-server url 2>/dev/null | head -n 1)"
+    echo
+    echo "AI is ready."
+    case "$u" in https://*) echo "  Chat page:  $u/ai/";; *) echo "  Chat page:  <your website>/ai/  (start the website: phone-server start)";; esac
+    echo "  Password:   $(key)"
+    echo "It stops by itself after $(conf_get idle 30) min without use, or if the phone gets too hot." ;;
+
+  stop)
+    alive "$AI/guard.pid" && kill "$(cat "$AI/guard.pid")"
+    alive "$AI/server.pid" && kill "$(cat "$AI/server.pid")"
+    rm -f "$AI/server.pid" "$AI/guard.pid"; echo "AI stopped." ;;
+
+  status)
+    if alive "$AI/server.pid"; then echo "AI: RUNNING ($(conf_get model qwen), $(conf_get threads 4) cores)"; else echo "AI: stopped  (start: phone-ai start)"; fi
+    t="$(termux-battery-status 2>/dev/null | jq -r '.temperature // empty' 2>/dev/null)"; [ -n "$t" ] && echo "Phone temperature: ${t}°C (AI stops at $(conf_get maxtemp 45)°C)"
+    echo "Downloaded models:"; ls -1sh "$AI/models" 2>/dev/null | grep -v '\.part$' | tail -n +2 | sed 's/^/  /'
+    echo "--- recent ---"; tail -n 4 "$AI/guard.log" 2>/dev/null ;;
+
+  models)
+    echo "Available models (current: $(conf_get model qwen)):"
+    echo "$CATALOG" | while IFS='|' read -r n r p d; do printf "  %-7s %s\n" "$n" "$d"; done
+    echo; echo "Switch with:  phone-ai model NAME" ;;
+
+  model)
+    [ -z "$2" ] && { "$0" models; exit 0; }
+    model_line "$2" >/dev/null || { echo "Unknown model. See: phone-ai models"; exit 1; }
+    download_model "$2" >/dev/null || exit 1
+    echo "$2" > "$AI/model"; echo "Model set to $2."
+    if alive "$AI/server.pid"; then "$0" stop; "$0" start; else echo "Start it with:  phone-ai start"; fi ;;
+
+  threads) [[ "$2" =~ ^[1-8]$ ]] || { echo "Usage: phone-ai threads 1-8 (default 4)"; exit 1; }; echo "$2" > "$AI/threads"; echo "Will use $2 cores next start." ;;
+  idle)    [[ "$2" =~ ^[0-9]+$ ]] || { echo "Usage: phone-ai idle MINUTES (0 = never stop)"; exit 1; }; echo "$2" > "$AI/idle"; echo "Idle stop: $2 min (next start)." ;;
+  key|password) echo "$(key)"; command -v termux-clipboard-set >/dev/null && { echo -n "$(key)" | termux-clipboard-set; echo "(copied to clipboard)"; } ;;
+  new-key) rm -f "$AI/key"; echo "New password: $(key)  (restart the AI: phone-ai stop; phone-ai start)" ;;
+  ask)  # quick test from the terminal: phone-ai ask "question"
+    shift; q="$*"; [ -z "$q" ] && { echo 'Usage: phone-ai ask "your question"'; exit 1; }
+    alive "$AI/server.pid" || { echo "Start it first: phone-ai start"; exit 1; }
+    jq -n --arg q "$q" '{messages:[{role:"user",content:$q}], max_tokens:200}' \
+      | curl -s "http://127.0.0.1:$PORT/v1/chat/completions" -H "Authorization: Bearer $(key)" -H 'Content-Type: application/json' -d @- \
+      | jq -r '.choices[0].message.content // .error.message // .' ;;
+  log) tail -n 15 "$AI/server.log"; echo "--- guard ---"; tail -n 5 "$AI/guard.log" 2>/dev/null ;;
+  self-update) exec bash -c "curl -fsSL $RAW/ai/install.sh | bash" ;;
+  _guard) guard_loop ;;
+  *)
+    cat <<'TXT'
+phone-ai commands:
+  phone-ai start            load the model; chat at <your website>/ai/
+  phone-ai start --always   ...and never stop for being idle
+  phone-ai stop | status | log
+  phone-ai key              show (and copy) the chat password
+  phone-ai ask "question"   quick test in the terminal
+  phone-ai models           list models     phone-ai model NAME   switch model
+  phone-ai threads N        CPU cores to use (default 4; more = faster + hotter)
+  phone-ai idle MIN         auto-stop after MIN idle minutes (default 30, 0 = never)
+  phone-ai self-update
+TXT
+    ;;
+esac

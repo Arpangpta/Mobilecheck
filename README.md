@@ -132,3 +132,39 @@ Page refreshes on inner routes work (nginx falls back to the app's `index.html`)
 
 **Notes:** the free address changes whenever the tunnel restarts – check it with `phone-server url`.
 For a permanent address, use your own domain with a named Cloudflare tunnel.
+
+---
+
+# Phone AI – a small open-source model on the phone (llama.cpp)
+
+Runs a small model with **llama.cpp** fully on the phone's CPU and serves it through the phone server:
+- **`/ai/`** – password-protected chat page (the portfolio at `/` is untouched)
+- **`/ai/v1/`** – OpenAI-style API (`/ai/v1/chat/completions`), for your own React/Angular sites
+
+Install in Termux (after the phone server):
+```
+curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/ai/install.sh | bash
+phone-ai start
+```
+The first start downloads the model (~400 MB). Get the chat password with `phone-ai key`.
+
+| Model (`phone-ai model NAME`) | Size | Notes |
+|---|---|---|
+| `qwen` – Qwen2.5 0.5B Instruct (default) | ~400 MB | best balance |
+| `llama` – Llama 3.2 1B Instruct | ~800 MB | smarter, slow on this phone |
+| `smollm` – SmolLM2 360M | ~380 MB | faster, simpler |
+| `gemma` – Gemma 3 270M | ~290 MB | fast, short tasks |
+| `tiny` – SmolLM2 135M | ~145 MB | fastest, often wrong |
+
+**Safety built in:** uses 4 of 8 cores, answers are capped at 256 tokens, and the AI stops itself after
+30 idle minutes (`phone-ai idle`) or when the phone reaches 45 °C (`~/.phone-ai/maxtemp`).
+
+Calling the API from your own site:
+```js
+fetch('/ai/v1/chat/completions', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer YOUR_PHONE_AI_KEY' },
+  body: JSON.stringify({ messages: [{ role: 'user', content: 'Hi!' }], max_tokens: 150 })
+}).then(r => r.json()).then(j => console.log(j.choices[0].message.content));
+```
+(Don't put the key in a public site's code – anyone could read it. Use it from private pages only.)

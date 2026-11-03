@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+<title>Phone AI</title>
+<style>
+  :root { --bg:#f7f6f2; --card:#fff; --fg:#1d1d1f; --mute:#6b6d74; --line:#e3e1da; --acc:#0b6e4f; --me:#0b6e4f; --me-fg:#fff; --bot:#fff; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111214; --card:#1a1b1e; --fg:#ececec; --mute:#9a9ca3; --line:#2a2c30; --acc:#4fd1a1; --me:#1f6f55; --me-fg:#fff; --bot:#1a1b1e; --warn:#fbbf24; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  header b { font-size: 17px; }
+  header a { color: var(--mute); font-size: 14px; text-decoration: none; margin-left: auto; }
+  #state { font-size: 13px; color: var(--mute); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--mute); margin-right: 5px; }
+  .dot.on { background: #22c55e; } .dot.off { background: #ef4444; }
+  main { flex: 1; overflow-y: auto; padding: 16px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  .msg { margin: 0 0 12px; display: flex; }
+  .msg div { padding: 10px 14px; border-radius: 14px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.me { justify-content: flex-end; } .msg.me div { background: var(--me); color: var(--me-fg); border-bottom-right-radius: 4px; }
+  .msg.bot div { background: var(--bot); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .meta { font-size: 12px; color: var(--mute); margin: -6px 0 12px 4px; }
+  .note { color: var(--mute); font-size: 14px; text-align: center; margin: 24px 0; }
+  .note.warn { color: var(--warn); }
+  form { border-top: 1px solid var(--line); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); }
+  form .wrap { display: flex; gap: 8px; }
+  textarea { flex: 1; resize: none; font: inherit; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); max-height: 140px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 0 16px; background: var(--acc); color: #fff; }
+  @media (prefers-color-scheme: dark) { button { color: #0b1a14; } }
+  button.sec { background: transparent; color: var(--mute); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; }
+  #login { max-width: 420px; margin: 12vh auto 0; padding: 0 16px; text-align: center; }
+  #login input { width: 100%; padding: 12px; font: inherit; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); margin: 12px 0; }
+  #login button { padding: 12px 20px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <b>Phone AI</b>
+  <span id="state"><span class="dot" id="dot"></span><span id="stateText">checking…</span></span>
+  <a href="/">&larr; Home</a>
+</header>
+
+<div id="login" class="hidden">
+  <h2>Private AI</h2>
+  <p class="note" style="margin:0">This AI runs on an old phone, so it is password-protected.<br>
+    Get the password on the phone with <code>phone-ai key</code>.</p>
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+  <button id="pwBtn">Unlock</button>
+  <p class="note warn hidden" id="pwErr">Wrong password.</p>
+</div>
+
+<main id="chat" class="hidden"><div class="wrap" id="log">
+  <p class="note">A small open-source model running on a 2017 Redmi Y1 with llama.cpp.<br>
+    It is slow (a few words per second) and can be wrong. Keep questions short.</p>
+</div></main>
+
+<form id="form" class="hidden">
+  <div class="wrap">
+    <textarea id="q" rows="1" placeholder="Ask something short…"></textarea>
+    <button id="send" type="submit">Send</button>
+    <button id="stop" type="button" class="sec hidden">Stop</button>
+  </div>
+</form>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var API = '/ai/v1/chat/completions';
+  var SYSTEM = 'You are a helpful assistant running on an old phone. Answer briefly and clearly.';
+  var MAX_TOKENS = 256, KEEP = 6;      // short answers + short memory = less heat
+  var history = [], ctrl = null;
+
+  function getKey() { try { return localStorage.getItem('ai_key') || ''; } catch (e) { return ''; } }
+  function setKey(k) { try { localStorage.setItem('ai_key', k); } catch (e) {} }
+
+  function state(on, text) { $('dot').className = 'dot ' + (on ? 'on' : 'off'); $('stateText').textContent = text; }
+  function health() {
+    fetch('/ai/health', { cache: 'no-store' }).then(function (r) {
+      if (r.ok) state(true, 'online');
+      else state(false, r.status === 502 ? 'sleeping – run “phone-ai start” on the phone' : (r.status === 503 ? 'loading model…' : 'offline'));
+    }).catch(function () { state(false, 'offline'); });
+  }
+
+  function add(cls, text) {
+    var row = document.createElement('div'); row.className = 'msg ' + cls;
+    var b = document.createElement('div'); b.textContent = text; row.appendChild(b);
+    $('log').appendChild(row); $('chat').scrollTop = 1e9; return b;
+  }
+  function meta(text) { var m = document.createElement('div'); m.className = 'meta'; m.textContent = text; $('log').appendChild(m); }
+  function note(text, warn) { var p = document.createElement('p'); p.className = 'note' + (warn ? ' warn' : ''); p.textContent = text; $('log').appendChild(p); $('chat').scrollTop = 1e9; }
+
+  function showChat() { $('login').classList.add('hidden'); $('chat').classList.remove('hidden'); $('form').classList.remove('hidden'); $('q').focus(); }
+  function showLogin(err) { $('login').classList.remove('hidden'); $('chat').classList.add('hidden'); $('form').classList.add('hidden'); $('pwErr').classList.toggle('hidden', !err); }
+
+  $('pwBtn').onclick = function () {
+    var k = $('pw').value.trim(); if (!k) return;
+    // check the password with a tiny request
+    fetch('/ai/v1/models', { headers: { Authorization: 'Bearer ' + k } }).then(function (r) {
+      if (r.status === 401 || r.status === 403) { showLogin(true); return; }
+      setKey(k); showChat();
+      if (!r.ok) note('The AI is not running right now. On the phone run: phone-ai start', true);
+    }).catch(function () { setKey(k); showChat(); note('Could not reach the AI.', true); });
+  };
+  $('pw').onkeydown = function (e) { if (e.key === 'Enter') $('pwBtn').click(); };
+
+  function busy(on) { $('send').disabled = on; $('stop').classList.toggle('hidden', !on); $('q').disabled = on; }
+  $('stop').onclick = function () { if (ctrl) ctrl.abort(); };
+
+  $('q').addEventListener('input', function () { this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 140) + 'px'; });
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('form').requestSubmit ? $('form').requestSubmit() : $('send').click(); } });
+
+  $('form').onsubmit = function (e) {
+    e.preventDefault();
+    var q = $('q').value.trim(); if (!q || ctrl) return;
+    $('q').value = ''; $('q').style.height = 'auto';
+    add('me', q); history.push({ role: 'user', content: q });
+    var bubble = add('bot', '…'), answer = '', started = Date.now(), timings = null;
+    busy(true); ctrl = window.AbortController ? new AbortController() : null;
+
+    fetch(API, {
+      method: 'POST', signal: ctrl ? ctrl.signal : undefined,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
+      body: JSON.stringify({ messages: [{ role: 'system', content: SYSTEM }].concat(history.slice(-KEEP)), stream: true, max_tokens: MAX_TOKENS })
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 403) { setKey(''); showLogin(true); throw new Error('auth'); }
+      if (r.status === 502) throw new Error('The AI is sleeping. On the phone run: phone-ai start');
+      if (!r.ok || !r.body) throw new Error('The AI answered with an error (' + r.status + ').');
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return;
+          buf += dec.decode(res.value, { stream: true });
+          var lines = buf.split('\n'); buf = lines.pop();
+          lines.forEach(function (line) {
+            line = line.trim(); if (line.indexOf('data:') !== 0) return;
+            var data = line.slice(5).trim(); if (data === '[DONE]') return;
+            try {
+              var j = JSON.parse(data);
+              var d = j.choices && j.choices[0] && j.choices[0].delta;
+              if (d && d.content) { answer += d.content; bubble.textContent = answer; $('chat').scrollTop = 1e9; }
+              if (j.timings) timings = j.timings;
+            } catch (err) {}
+          });
+          return pump();
+        });
+      }
+      return pump();
+    }).then(function () {
+      history.push({ role: 'assistant', content: answer });
+      var secs = ((Date.now() - started) / 1000).toFixed(1);
+      meta(timings && timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) + ' tokens/s · ' + secs + ' s' : secs + ' s');
+    }).catch(function (err) {
+      if (err.message === 'auth') return;
+      if (err.name === 'AbortError') { history.push({ role: 'assistant', content: answer }); meta('stopped'); }
+      else { bubble.parentNode.remove(); history.pop(); note(err.message || 'Could not reach the AI.', true); }
+    }).then(function () { ctrl = null; busy(false); health(); });
+  };
+
+  health(); setInterval(health, 30000);
+  if (getKey()) showChat(); else showLogin(false);
+})();
+</script>
+</body>
+</html>
