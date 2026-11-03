@@ -25,6 +25,7 @@ fetch_site() {  # name repo branch
 }
 
 link_sites() {
+  local name repo branch sub _
   find "$SERVE" -mindepth 1 -maxdepth 1 -type l -delete
   while IFS=$'\t' read -r name repo branch sub; do
     [ -z "$name" ] && continue
@@ -33,6 +34,7 @@ link_sites() {
 }
 
 write_index() {  # fallback home page listing the sites
+  local name repo branch sub _
   {
     echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
     echo '<title>Phone server</title><body style="font-family:sans-serif;padding:24px"><h1>Phone server</h1><ul>'
@@ -42,6 +44,7 @@ write_index() {  # fallback home page listing the sites
 }
 
 write_conf() {
+  local name _ t
   local home=""; [ -f "$HOMEF" ] && home="$(cat "$HOMEF")"
   local homeroot="$DATA/www"; [ -n "$home" ] && [ -e "$SERVE/$home" ] && homeroot="$SERVE/$home"
   {
@@ -75,6 +78,7 @@ rebuild() {  # relink + rewrite config + reload nginx if running
 }
 
 update_all() {
+  local name repo branch sub _
   local ok=0
   while IFS=$'\t' read -r name repo branch sub; do
     [ -z "$name" ] && continue

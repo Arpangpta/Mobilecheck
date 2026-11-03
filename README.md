@@ -93,3 +93,42 @@ If `test` says **wrong key**: the sheet is locked to the phone that sent first. 
 
 Keep Termux alive on MIUI: Settings → Apps → Termux → Autostart **on**, Battery saver **No restrictions**,
 and lock Termux in the recent-apps screen.
+
+---
+
+# Phone Server – host websites on the old phone
+
+nginx serves your sites on the phone, and a free **Cloudflare quick tunnel** gives them a public
+`https://….trycloudflare.com` address (no router setup, works behind Jio/Airtel CGNAT).
+Sites are pulled from GitHub, so you never need a laptop on the phone.
+
+Install in Termux:
+```
+curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/server/install.sh | bash
+phone-server start
+```
+The portfolio in [`sites/portfolio/`](sites/portfolio/) is installed as the home page.
+It shows a live "served from a 2017 Redmi Y1" line (battery, uptime, temperature) from `/status.json`.
+
+| Command | What it does |
+|---|---|
+| `phone-server start` | start nginx + tunnel, prints the public address |
+| `phone-server url` | show and copy the public address |
+| `phone-server status` | what is running, which sites |
+| `phone-server add NAME REPO_URL [BRANCH] [FOLDER]` | host a site from a public GitHub repo at `/NAME/` |
+| `phone-server home NAME` | make a site the home page `/` |
+| `phone-server update` | pull the latest version of all sites (also automatic every 15 minutes) |
+| `phone-server remove NAME` / `stop` / `restart` / `log` / `self-update` | |
+
+### React / Angular sites
+They are built into static files, then committed (e.g. a `dist/` folder) to a GitHub repo.
+Set the base path to `/NAME/` when building:
+- **Vite (React):** `base: '/NAME/'` in `vite.config.js`
+- **Create React App:** `"homepage": "/NAME/"` in `package.json`
+- **Angular:** `ng build --base-href /NAME/`
+
+Then: `phone-server add NAME https://github.com/Arpangpta/REPO.git main dist`.
+Page refreshes on inner routes work (nginx falls back to the app's `index.html`).
+
+**Notes:** the free address changes whenever the tunnel restarts – check it with `phone-server url`.
+For a permanent address, use your own domain with a named Cloudflare tunnel.
