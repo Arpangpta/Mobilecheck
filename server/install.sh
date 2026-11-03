@@ -8,7 +8,7 @@ yes | pkg install nginx cloudflared git jq termux-api resolv-conf curl >/dev/nul
 curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/server/phone-server -o "$PREFIX/bin/phone-server"
 chmod +x "$PREFIX/bin/phone-server"
 if ! grep -q "^portfolio	" "$HOME/.phone-server/sites.tsv" 2>/dev/null; then
-  phone-server add portfolio https://github.com/Arpangpta/Mobilecheck.git room-sensor sites/portfolio
+  phone-server add portfolio https://github.com/Arpangpta/Mobilecheck.git room-sensor sites/portfolio </dev/null || true
 fi
 echo
 echo "== Installed! =="

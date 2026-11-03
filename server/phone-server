@@ -6,6 +6,7 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 DATA="${PHONE_SERVER_DATA:-$HOME/.phone-server}"
 REPOS="$DATA/repos"; SERVE="$DATA/serve"; LIST="$DATA/sites.tsv"; HOMEF="$DATA/home"
 CONF="$DATA/nginx.conf"; PORT="${PHONE_SERVER_PORT:-8080}"
+DEFAULT_REPO="https://github.com/Arpangpta/Mobilecheck.git"
 SELF_URL="https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/server/install.sh"
 mkdir -p "$DATA" "$REPOS" "$SERVE" "$DATA/tmp" "$DATA/www"
 touch "$LIST"
@@ -119,6 +120,10 @@ watch_loop() {  # runs in background: status every minute, site updates every 15
 case "$1" in
   start)
     if alive "$DATA/watch.pid"; then echo "Already running."; "$0" url; exit 0; fi
+    if ! grep -q . "$LIST"; then
+      echo "No sites yet - adding your portfolio first..."
+      "$0" add portfolio "$DEFAULT_REPO" room-sensor sites/portfolio </dev/null
+    fi
     command -v termux-wake-lock >/dev/null && termux-wake-lock
     date +%s > "$DATA/started"
     rebuild
