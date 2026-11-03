@@ -47,10 +47,21 @@ download_model() {  # name -> prints path of downloaded model
   out="$AI/models/$file"
   echo "$file" > "$AI/file-$1"
   if [ -s "$out" ] && [ ! -f "$out.part" ]; then echo "$out"; return 0; fi
-  echo "Downloading $file (you can stop with CTRL+C and run again to resume)..." >&2
+  echo "Downloading $file - it resumes by itself if the connection drops (CTRL+C to stop)..." >&2
   touch "$out.part"
-  if curl -fL --progress-bar -C - "$HF/$repo/resolve/main/$file" -o "$out"; then rm -f "$out.part"; echo "$out"
-  else echo "Download failed. Run the same command again to resume." >&2; return 1; fi
+  command -v termux-wake-lock >/dev/null && termux-wake-lock   # keep Android from sleeping mid-download
+  local try=1 ok=0 rc
+  while [ "$try" -le 40 ]; do
+    curl -fL --progress-bar -C - --speed-limit 2000 --speed-time 45 --connect-timeout 20 \
+         "$HF/$repo/resolve/main/$file" -o "$out"
+    rc=$?
+    [ "$rc" -eq 0 ] && { ok=1; break; }
+    [ "$rc" -eq 33 ] && rm -f "$out"             # server refused to resume: start this file again
+    echo "Connection dropped - resuming in 5 s (attempt $((try+1))/40)..." >&2
+    sleep "${PHONE_AI_RETRY_SLEEP:-5}"; try=$((try+1))
+  done
+  if [ "$ok" = 1 ]; then rm -f "$out.part"; echo "Download complete." >&2; echo "$out"
+  else echo "Download keeps failing. Check Wi-Fi, then run the same command again - it resumes." >&2; return 1; fi
 }
 
 current_model_path() {  # path of the downloaded file for the chosen model, if complete
