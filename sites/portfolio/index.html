@@ -3,198 +3,245 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fdf8f3">
+<meta name="color-scheme" content="light">
 <title>Arpan Gupta</title>
 <meta name="description" content="Arpan Gupta – projects in software, machine learning, data and robotics.">
 <style>
   :root {
-    --bg: #f7f6f2; --card: #ffffff; --fg: #1d1d1f; --mute: #5f6168; --line: #e3e1da;
-    --acc: #0b6e4f; --acc-soft: #e2f1ea; --live: #1f9d55;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #111214; --card: #1a1b1e; --fg: #ececec; --mute: #9a9ca3; --line: #2a2c30; --acc: #4fd1a1; --acc-soft: #173229; --live: #4ade80; }
+    --bg: #fdf8f3; --card: #ffffff; --ink: #2b2733; --mute: #6c6776; --line: #efe6dc;
+    --lav: #e6defe; --lav-ink: #5a45c4; --mint: #d6f3e4; --mint-ink: #237653;
+    --peach: #ffe2d3; --peach-ink: #a24a25; --sky: #d9ecff; --sky-ink: #2a62a3;
+    --butter: #fff3c4; --butter-ink: #8a6a00; --rose: #ffdbe7; --rose-ink: #a33a62;
+    --shadow: 0 1px 2px rgba(60,40,20,.04), 0 6px 20px rgba(60,40,20,.06);
+    --radius: 18px;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  a { color: var(--acc); text-decoration: none; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow-x: hidden; }
+  a { color: var(--lav-ink); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+  img { max-width: 100%; display: block; }
+  .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 768px) { .wrap { padding: 0 32px; } }
 
-  nav { position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); z-index: 5; }
-  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; }
-  nav b { font-size: 17px; }
-  nav .links a { color: var(--mute); margin-left: 18px; font-size: 15px; }
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 10; background: rgba(253,248,243,.85); backdrop-filter: saturate(160%) blur(10px); -webkit-backdrop-filter: saturate(160%) blur(10px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+  .brand:hover { text-decoration: none; }
+  .brand i { width: 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, var(--lav), var(--rose)); display: grid; place-items: center; font-style: normal; font-size: 14px; color: var(--lav-ink); }
+  .links { display: flex; gap: 4px; }
+  .links a { color: var(--mute); font-size: 15px; padding: 8px 12px; border-radius: 999px; }
+  .links a:hover { background: var(--lav); color: var(--lav-ink); text-decoration: none; }
+  @media (max-width: 420px) { .links a { padding: 8px 9px; font-size: 14px; } .links .opt { display: none; } }
 
-  header { padding: 72px 0 40px; }
-  .hi { color: var(--acc); font-weight: 600; letter-spacing: .02em; }
-  h1 { font-size: clamp(36px, 7vw, 56px); line-height: 1.1; margin: 8px 0 16px; letter-spacing: -0.02em; }
-  .lead { font-size: 19px; color: var(--mute); max-width: 640px; }
-  .cta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 10px; }
-  .btn { display: inline-block; padding: 10px 18px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font-weight: 600; font-size: 15px; }
-  .btn.primary { background: var(--acc); border-color: var(--acc); color: #fff; }
-  @media (prefers-color-scheme: dark) { .btn.primary { color: #0b1a14; } }
-  .btn:hover { text-decoration: none; filter: brightness(1.05); }
+  /* hero */
+  header { padding: 40px 0 24px; }
+  .hero { display: grid; gap: 28px; align-items: center; }
+  @media (min-width: 860px) { header { padding: 80px 0 48px; } .hero { grid-template-columns: 1.4fr 1fr; gap: 48px; } }
+  .pill { display: inline-flex; align-items: center; gap: 8px; background: var(--mint); color: var(--mint-ink); padding: 6px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+  h1 { font-size: clamp(34px, 7vw, 60px); line-height: 1.08; letter-spacing: -0.025em; margin: 16px 0 14px; }
+  h1 span { background: linear-gradient(90deg, #7c5cff, #e8679a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: clamp(16px, 2.2vw, 19px); color: var(--mute); max-width: 600px; margin: 0; }
+  .cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 20px; border-radius: 999px; font-weight: 600; font-size: 15px; border: 1px solid var(--line); background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: #7c5cff; border-color: #7c5cff; color: #fff; }
+  @media (max-width: 480px) { .cta .btn { flex: 1 1 calc(50% - 10px); } .cta .btn.primary { flex-basis: 100%; } }
 
-  .live { display: none; margin-top: 28px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 12px; font-size: 14px; color: var(--mute); }
-  .live .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); margin-right: 6px; animation: pulse 2s infinite; }
-  @keyframes pulse { 50% { opacity: .35; } }
+  .photo { position: relative; justify-self: center; width: min(320px, 80vw); aspect-ratio: 1; }
+  .photo .blob { position: absolute; inset: 0; border-radius: 42% 58% 55% 45% / 48% 42% 58% 52%; background: linear-gradient(135deg, var(--lav), var(--peach) 55%, var(--mint)); }
+  .photo img { position: absolute; inset: 12%; width: 76%; height: 76%; border-radius: 50%; object-fit: cover; border: 6px solid #fff; box-shadow: var(--shadow); }
+  @media (max-width: 859px) { .photo { width: 180px; order: -1; justify-self: start; } }
 
-  section { padding: 40px 0; border-top: 1px solid var(--line); }
-  h2 { font-size: 26px; margin: 0 0 20px; letter-spacing: -0.01em; }
+  .live { display: none; margin-top: 22px; padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; font-size: 14px; color: var(--mute); box-shadow: var(--shadow); width: fit-content; max-width: 100%; }
+  .live .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34c77b; margin-right: 8px; vertical-align: middle; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  /* sections */
+  section { padding: 36px 0; }
+  @media (min-width: 860px) { section { padding: 56px 0; } }
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  h2 { font-size: clamp(24px, 4vw, 32px); margin: 0; letter-spacing: -0.015em; }
+  .head p { margin: 0; color: var(--mute); font-size: 15px; }
+
   .skills { display: flex; flex-wrap: wrap; gap: 8px; }
-  .skills span { background: var(--acc-soft); color: var(--acc); padding: 4px 12px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+  .skills span { padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+  .c1 { background: var(--lav); color: var(--lav-ink); } .c2 { background: var(--mint); color: var(--mint-ink); }
+  .c3 { background: var(--peach); color: var(--peach-ink); } .c4 { background: var(--sky); color: var(--sky-ink); }
+  .c5 { background: var(--butter); color: var(--butter-ink); } .c6 { background: var(--rose); color: var(--rose-ink); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; }
-  .card h3 { margin: 0 0 6px; font-size: 18px; }
-  .card p { margin: 0 0 12px; color: var(--mute); font-size: 15px; flex: 1; }
-  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .tags span { font-size: 12px; color: var(--mute); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; }
-  .card.featured { border-color: var(--acc); }
-  .badge { font-size: 12px; font-weight: 700; color: var(--acc); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 1000px) { .grid { grid-template-columns: repeat(3, 1fr); gap: 20px; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; box-shadow: var(--shadow); transition: transform .15s ease, box-shadow .15s ease; }
+  .card:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(60,40,20,.05), 0 14px 32px rgba(60,40,20,.09); }
+  .icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; line-height: 1.3; }
+  .card p { margin: 0 0 14px; color: var(--mute); font-size: 15px; flex: 1; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .tags span { font-size: 12px; color: var(--mute); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; }
+  .card .more { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 600; font-size: 15px; }
+  .card.featured { background: linear-gradient(160deg, #fff 40%, var(--lav)); border-color: #d6cafd; }
+  @media (min-width: 1000px) { .card.featured { grid-column: span 2; } }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; color: var(--lav-ink); background: #fff; border: 1px solid #d6cafd; border-radius: 999px; padding: 2px 10px; margin-bottom: 10px; width: fit-content; }
 
-  footer { padding: 36px 0 60px; color: var(--mute); font-size: 14px; border-top: 1px solid var(--line); }
-  @media (max-width: 520px) { nav .links a { margin-left: 12px; } nav .links a.hide-sm { display: none; } }
+  .contact { background: linear-gradient(135deg, var(--peach), var(--rose) 50%, var(--lav)); border-radius: 24px; padding: 28px 22px; text-align: center; }
+  @media (min-width: 768px) { .contact { padding: 48px; } }
+  .contact p { color: #4d4656; max-width: 520px; margin: 8px auto 20px; }
+  .contact .cta { justify-content: center; margin-top: 0; }
+
+  footer { padding: 28px 0 40px; color: var(--mute); font-size: 14px; text-align: center; }
 </style>
 </head>
 <body>
 
 <nav>
   <div class="wrap">
-    <b>Arpan Gupta</b>
+    <a class="brand" href="#top"><i>AG</i>Arpan Gupta</a>
     <div class="links">
       <a href="#projects">Projects</a>
-      <a href="#skills" class="hide-sm">Skills</a>
+      <a href="#skills" class="opt">Skills</a>
+      <a href="/ai/" class="opt">AI</a>
       <a href="#contact">Contact</a>
     </div>
   </div>
 </nav>
 
-<div class="wrap">
+<div class="wrap" id="top">
   <header>
-    <div class="hi">Hi, I'm</div>
-    <h1>Arpan Gupta</h1>
-    <!-- EDIT ME: change this line to describe yourself -->
-    <p class="lead">I build things across software, machine learning, data analytics and robotics,
-      from AST-based code analysis and deep-learning models to chatbots, dashboards and robots that play chess.</p>
-    <div class="cta">
-      <a class="btn primary" href="#projects">See my work</a>
-      <a class="btn" href="https://github.com/Arpangpta" target="_blank" rel="noopener">GitHub</a>
-      <a class="btn" href="https://x.com/apn_gupta" target="_blank" rel="noopener">X / Twitter</a>
+    <div class="hero">
+      <div>
+        <span class="pill">👋 Open to opportunities</span>
+        <h1>Hi, I'm <span>Arpan Gupta</span></h1>
+        <!-- EDIT ME: describe yourself here -->
+        <p class="lead">I build things across software, machine learning, data analytics and robotics,
+          from AST-based code analysis and deep-learning models to chatbots, dashboards and robots that play chess.</p>
+        <div class="cta">
+          <a class="btn primary" href="#projects">See my work →</a>
+          <a class="btn" href="https://github.com/Arpangpta" target="_blank" rel="noopener">GitHub</a>
+          <a class="btn" href="https://x.com/apn_gupta" target="_blank" rel="noopener">X / Twitter</a>
+        </div>
+        <div class="live" id="live"><span class="dot"></span><span id="liveText"></span></div>
+      </div>
+      <div class="photo">
+        <div class="blob"></div>
+        <img src="https://avatars.githubusercontent.com/u/43065844?v=4" alt="Arpan Gupta" width="240" height="240">
+      </div>
     </div>
-    <div class="live" id="live"><span class="dot"></span><span id="liveText"></span></div>
   </header>
 
   <section id="skills">
-    <h2>Skills</h2>
+    <div class="head"><h2>Skills</h2><p>Tools I've used in my projects</p></div>
     <div class="skills">
-      <span>Python</span><span>Java</span><span>Django</span><span>Machine Learning</span><span>Deep Learning</span>
-      <span>Transformers (CodeBERTa)</span><span>ROS &amp; Gazebo</span><span>Dialogflow CX</span><span>Power BI</span>
-      <span>Data Analysis</span><span>AWS</span><span>Shell scripting</span><span>HTML / CSS / JS</span>
+      <span class="c1">Python</span><span class="c2">Java</span><span class="c3">Django</span><span class="c4">Machine Learning</span>
+      <span class="c5">Deep Learning</span><span class="c6">Transformers (CodeBERTa)</span><span class="c1">ROS &amp; Gazebo</span>
+      <span class="c2">Dialogflow CX</span><span class="c3">Power BI</span><span class="c4">Data Analysis</span><span class="c5">AWS</span>
+      <span class="c6">Shell scripting</span><span class="c1">HTML / CSS / JS</span><span class="c2">llama.cpp</span>
     </div>
   </section>
 
   <section id="projects">
-    <h2>Projects</h2>
+    <div class="head"><h2>Projects</h2><p>Selected work from my GitHub</p></div>
     <div class="grid">
 
       <div class="card featured">
-        <div class="badge">New &middot; this website runs on it</div>
-        <h3>Old Phone Server &amp; Room Sensor</h3>
+        <span class="badge">✨ New · this website runs on it</span>
+        <h3>Old Phone Server, Room Sensor &amp; On-device AI</h3>
         <p>Turned a 2017 Redmi Y1 into a home server: it logs room light, movement and power cuts to Google Sheets,
-          and hosts this very website through a Cloudflare tunnel.</p>
-        <div class="tags"><span>Termux</span><span>Python</span><span>nginx</span><span>Apps Script</span></div>
-        <a href="https://github.com/Arpangpta/Mobilecheck" target="_blank" rel="noopener">View code &rarr;</a>
+          hosts this website through a Cloudflare tunnel, and runs a small open-source LLM with llama.cpp.</p>
+        <div class="tags"><span>Termux</span><span>nginx</span><span>Cloudflare</span><span>llama.cpp</span><span>Python</span><span>Apps Script</span></div>
+        <div class="more"><a href="https://github.com/Arpangpta/Mobilecheck" target="_blank" rel="noopener">View code →</a><a href="/ai/">Try the AI →</a></div>
       </div>
 
       <div class="card">
-        <h3>AlgoD &ndash; Code Structure Identifier</h3>
-        <p>Identifies algorithmic structures in source code using Abstract Syntax Trees and a CodeBERTa-based classifier,
-          combining syntax with transformer embeddings for small datasets.</p>
+        <div class="icon c1">🧠</div>
+        <h3>AlgoD – Code Structure Identifier</h3>
+        <p>Identifies algorithmic structures in source code using Abstract Syntax Trees and a CodeBERTa-based classifier.</p>
         <div class="tags"><span>Java</span><span>AST</span><span>CodeBERTa</span><span>NLP</span></div>
-        <a href="https://github.com/Arpangpta/AlgoD-CodeStructure-Identifier" target="_blank" rel="noopener">View code &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/AlgoD-CodeStructure-Identifier" target="_blank" rel="noopener">View code →</a></div>
       </div>
 
       <div class="card">
-        <h3>Goofy Zombie &ndash; Chess-playing Robot</h3>
-        <p>Human-like robotic intelligence: a virtual Baxter robot plays chess in Gazebo, using ROS and Python for
-          pick-and-place and API-driven move prediction.</p>
-        <div class="tags"><span>Python</span><span>ROS</span><span>Gazebo</span><span>Robotics</span></div>
-        <a href="https://github.com/Arpangpta/goofy-Zombie" target="_blank" rel="noopener">View code &rarr;</a>
+        <div class="icon c2">♟️</div>
+        <h3>Goofy Zombie – Chess Robot</h3>
+        <p>A virtual Baxter robot plays chess in Gazebo, using ROS and Python for pick-and-place and API-driven move prediction.</p>
+        <div class="tags"><span>Python</span><span>ROS</span><span>Gazebo</span></div>
+        <div class="more"><a href="https://github.com/Arpangpta/goofy-Zombie" target="_blank" rel="noopener">View code →</a></div>
       </div>
 
       <div class="card">
-        <h3>Sportify &ndash; Football Chatbot</h3>
-        <p>A cloud-based, real-time football chatbot built with Dialogflow CX and Python webhooks, giving sports
-          insights in natural language.</p>
+        <div class="icon c3">⚽</div>
+        <h3>Sportify – Football Chatbot</h3>
+        <p>A cloud-based, real-time football chatbot built with Dialogflow CX and Python webhooks.</p>
         <div class="tags"><span>Python</span><span>Dialogflow CX</span><span>Cloud</span></div>
-        <a href="https://github.com/Arpangpta/Sportify-Football-Chatbot" target="_blank" rel="noopener">View code &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/Sportify-Football-Chatbot" target="_blank" rel="noopener">View code →</a></div>
       </div>
 
       <div class="card">
+        <div class="icon c6">🔬</div>
         <h3>Colon Cancer Detection</h3>
         <p>A deep-learning model that predicts from histology images whether tissue shows signs of colon cancer.</p>
         <div class="tags"><span>Deep Learning</span><span>CNN</span><span>Jupyter</span></div>
-        <a href="https://github.com/Arpangpta/Identifying-Colon-Cancer-Using-Deep-Learning" target="_blank" rel="noopener">View code &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/Identifying-Colon-Cancer-Using-Deep-Learning" target="_blank" rel="noopener">View code →</a></div>
       </div>
 
       <div class="card">
-        <h3>BYOB &ndash; Build Your Own Business</h3>
+        <div class="icon c4">🏪</div>
+        <h3>BYOB – Build Your Own Business</h3>
         <p>A web app that lets small businesses create their own business website.</p>
         <div class="tags"><span>Python</span><span>Web</span></div>
-        <a href="https://github.com/Arpangpta/BYOB-APP" target="_blank" rel="noopener">View code &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/BYOB-APP" target="_blank" rel="noopener">View code →</a></div>
       </div>
 
       <div class="card">
+        <div class="icon c5">📝</div>
         <h3>Django Blog &amp; Splitwise Clone</h3>
         <p>Full-stack Django apps: a blogging platform, and an expense-splitting app inspired by Splitwise.</p>
         <div class="tags"><span>Python</span><span>Django</span></div>
-        <a href="https://github.com/Arpangpta/blogApp" target="_blank" rel="noopener">Blog &rarr;</a>
-        <a href="https://github.com/Arpangpta/Splitwise_Clone" target="_blank" rel="noopener">Splitwise clone &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/blogApp" target="_blank" rel="noopener">Blog →</a><a href="https://github.com/Arpangpta/Splitwise_Clone" target="_blank" rel="noopener">Splitwise →</a></div>
       </div>
 
       <div class="card">
+        <div class="icon c2">📊</div>
         <h3>Data Analytics Projects</h3>
         <p>A Power BI data-jobs dashboard, customer shopping-trend analysis, and combining employee data from many sources.</p>
         <div class="tags"><span>Power BI</span><span>Pandas</span><span>Analytics</span></div>
-        <a href="https://github.com/Arpangpta/Data-Jobs-Dashboard" target="_blank" rel="noopener">Dashboard &rarr;</a>
-        <a href="https://github.com/Arpangpta/Customer-Shopping-Trend-Analysis" target="_blank" rel="noopener">Shopping trends &rarr;</a>
+        <div class="more"><a href="https://github.com/Arpangpta/Data-Jobs-Dashboard" target="_blank" rel="noopener">Dashboard →</a><a href="https://github.com/Arpangpta/Customer-Shopping-Trend-Analysis" target="_blank" rel="noopener">Trends →</a></div>
       </div>
 
     </div>
   </section>
 
   <section id="contact">
-    <h2>Contact</h2>
-    <p>Open to opportunities and collaborations. The quickest way to reach me is through
-      <a href="https://github.com/Arpangpta" target="_blank" rel="noopener">GitHub</a> or
-      <a href="https://x.com/apn_gupta" target="_blank" rel="noopener">X / Twitter</a>.</p>
+    <div class="contact">
+      <h2>Let's work together</h2>
+      <p>Open to opportunities and collaborations. The quickest way to reach me is GitHub or X.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/Arpangpta" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn" href="https://x.com/apn_gupta" target="_blank" rel="noopener">X / Twitter</a>
+      </div>
+    </div>
   </section>
 </div>
 
-<footer>
-  <div class="wrap">&copy; <span id="yr">2026</span> Arpan Gupta &middot; Based in India</div>
-</footer>
+<footer>© <span id="yr">2026</span> Arpan Gupta · Based in India</footer>
 
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
-  // When served from the phone, /status.json exists and shows live phone stats.
-  (function live() {
-    function fmtUp(s) {
-      var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
-      return (d ? d + 'd ' : '') + (h ? h + 'h ' : '') + m + 'm';
-    }
+  // On the phone server, /status.json exists and shows live phone stats.
+  (function () {
+    function up(s) { var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+      return (d ? d + 'd ' : '') + (h ? h + 'h ' : '') + m + 'm'; }
     function load() {
-      fetch('/status.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (s) {
-          if (!s || s.battery === undefined) return;
-          var parts = ['Served live from a ' + (s.device || '2017 Redmi Y1') + ' in my room',
-            'battery ' + s.battery + '%' + (s.charging ? ' (charging)' : ''),
-            'up ' + fmtUp(s.uptime || 0)];
-          if (s.temp) parts.push(s.temp.toFixed ? s.temp.toFixed(0) + '°C' : s.temp + '°C');
-          document.getElementById('liveText').textContent = parts.join(' · ');
-          document.getElementById('live').style.display = 'block';
-        }).catch(function () {});
+      fetch('/status.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (s) {
+        if (!s || s.battery === undefined) return;
+        var t = ['Served live from a ' + (s.device || '2017 Redmi Y1') + ' in my room', '🔋 ' + s.battery + '%' + (s.charging ? ' ⚡' : ''), 'up ' + up(s.uptime || 0)];
+        if (typeof s.temp === 'number') t.push(Math.round(s.temp) + '°C');
+        document.getElementById('liveText').textContent = t.join(' · ');
+        document.getElementById('live').style.display = 'block';
+      }).catch(function () {});
     }
     load(); setInterval(load, 60000);
   })();
