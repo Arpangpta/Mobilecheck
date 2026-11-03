@@ -164,7 +164,7 @@
   try { lang = localStorage.getItem('ai_lang') || 'auto'; } catch (e) {}
   if (!LANGS[lang]) lang = 'auto';
   function prefix() {   // same prefix every time, so the phone can cache it and answer faster
-    var L = LANGS[lang], m = [{ role: 'system', content: BASE + ' ' + L.rule }];
+    var L = LANGS[lang], m = [{ role: 'system', content: BASE + ' ' + L.rule + (/qwen3/i.test(model) ? ' /no_think' : '') }];
     L.ex.forEach(function (p) { m.push({ role: 'user', content: p[0] }); m.push({ role: 'assistant', content: p[1] }); });
     return m;
   }
@@ -177,7 +177,7 @@
     b.onclick = function () { lang = b.getAttribute('data-lang'); try { localStorage.setItem('ai_lang', lang); } catch (e) {} showLang(); };
   });
   showLang();
-  var MAX_TOKENS = 256, KEEP = 6;
+  var MAX_TOKENS = 200, KEEP = 4;   // shorter memory + answers = faster replies on the phone
   var history = [], ctrl = null, model = '';
   var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
@@ -185,15 +185,19 @@
   function setKey(k) { try { localStorage.setItem('ai_key', k); } catch (e) {} }
 
   function state(on, text) { $('dot').className = 'dot ' + (on ? 'on' : 'off'); $('stateText').textContent = text; }
+  function loadModel() {   // which model is running (e.g. qwen3 needs its "thinking" switched off)
+    if (!getKey()) return;
+    fetch('/ai/v1/models', { headers: { Authorization: 'Bearer ' + getKey() } })
+      .then(function (m) { return m.ok ? m.json() : null; })
+      .then(function (j) { if (j && j.data && j.data[0]) { model = j.data[0].id; state(true, 'Online · ' + model); } }).catch(function () {});
+  }
   function health() {
     fetch('/ai/health', { cache: 'no-store' }).then(function (r) {
-      if (r.ok) { state(true, 'Online · ' + (model || 'on-device'));
-        if (!model && getKey()) fetch('/ai/v1/models', { headers: { Authorization: 'Bearer ' + getKey() } })
-          .then(function (m) { return m.ok ? m.json() : null; })
-          .then(function (j) { if (j && j.data && j.data[0]) { model = j.data[0].id; state(true, 'Online · ' + model); } }).catch(function () {}); }
+      if (r.ok) { state(true, 'Online · ' + (model || 'on-device')); if (!model) loadModel(); }
       else state(false, r.status === 503 ? 'Loading model…' : 'Sleeping – run “phone-ai start”');
     }).catch(function () { state(false, 'Offline'); });
   }
+  function clean(t) { return t.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').replace(/^\s+/, ''); }
   function scroll() { var m = $('chat'); m.scrollTop = m.scrollHeight; }
   function add(cls, text) {
     $('welcome').classList.add('hidden'); $('clear').classList.remove('hidden');
@@ -204,7 +208,7 @@
   function meta(t) { var m = document.createElement('div'); m.className = 'meta'; m.textContent = t; $('log').appendChild(m); scroll(); }
   function note(t) { var p = document.createElement('div'); p.className = 'note'; p.textContent = t; $('log').appendChild(p); $('welcome').classList.add('hidden'); scroll(); }
 
-  function showChat() { $('login').classList.add('hidden'); $('chat').classList.remove('hidden'); $('form').classList.remove('hidden'); if (!touch) $('q').focus(); }
+  function showChat() { loadModel(); $('login').classList.add('hidden'); $('chat').classList.remove('hidden'); $('form').classList.remove('hidden'); if (!touch) $('q').focus(); }
   function showLogin(err) { $('login').classList.remove('hidden'); $('chat').classList.add('hidden'); $('form').classList.add('hidden'); $('clear').classList.add('hidden'); $('pwErr').classList.toggle('hidden', !err); }
 
   $('pwBtn').onclick = function () {
@@ -262,7 +266,7 @@
             var data = line.slice(5).trim(); if (data === '[DONE]') return;
             try {
               var j = JSON.parse(data), d = j.choices && j.choices[0] && j.choices[0].delta;
-              if (d && d.content) { if (!answer) bubble.classList.remove('typing'); answer += d.content; bubble.textContent = answer; scroll(); }
+              if (d && d.content) { answer += d.content; var shown = clean(answer); if (shown) { bubble.classList.remove('typing'); bubble.textContent = shown; scroll(); } }
               if (j.timings) timings = j.timings;
             } catch (err) {}
           });
@@ -271,7 +275,7 @@
       }
       return pump();
     }).then(function () {
-      history.push({ role: 'assistant', content: answer });
+      answer = clean(answer); history.push({ role: 'assistant', content: answer });
       var secs = ((Date.now() - started) / 1000).toFixed(1);
       meta(timings && timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) + ' tokens/s · ' + secs + ' s' : secs + ' s');
     }).catch(function (err) {
