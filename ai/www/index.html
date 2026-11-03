@@ -66,6 +66,11 @@
   .send:disabled { background: #d8d2e6; cursor: default; }
   .send.stop { background: #f3a6a6; }
   .hint { font-size: 12px; color: var(--mute); text-align: center; margin-top: 6px; }
+  .langs { display: flex; gap: 6px; margin: 0 0 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .langs::-webkit-scrollbar { display: none; }
+  .langs span { flex: none; font-size: 13px; color: var(--mute); align-self: center; margin-right: 2px; }
+  .lang { flex: none; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px; cursor: pointer; min-height: 34px; }
+  .lang.on { background: var(--lav); border-color: #cbbcff; color: var(--lav-ink); font-weight: 600; }
   @media (max-width: 640px) { .hint { display: none; } }
 
   /* login */
@@ -111,13 +116,20 @@
         <button class="chip" type="button">Say hello in Hindi</button>
         <button class="chip" type="button">Explain what an API is in 2 lines</button>
         <button class="chip" type="button">Give me 3 names for a pet cat</button>
-        <button class="chip" type="button">Write a haiku about old phones</button>
+        <button class="chip" type="button">Kaise ho aap?</button>
       </div>
     </div>
     <div id="log"></div>
   </main>
 
   <form id="form" class="hidden" autocomplete="off">
+    <div class="langs" id="langs" role="radiogroup" aria-label="Reply language">
+      <span>Reply in</span>
+      <button class="lang" type="button" data-lang="auto">Auto</button>
+      <button class="lang" type="button" data-lang="en">English</button>
+      <button class="lang" type="button" data-lang="hi">हिंदी</button>
+      <button class="lang" type="button" data-lang="hinglish">Hinglish</button>
+    </div>
     <div class="composer">
       <textarea id="q" rows="1" placeholder="Message Phone AI…" enterkeyhint="send"></textarea>
       <button class="send" id="send" type="submit" aria-label="Send">↑</button>
@@ -131,9 +143,42 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var API = '/ai/v1/chat/completions';
-  var SYSTEM = 'You are a helpful assistant running on an old phone. Answer briefly and clearly.';
+  var BASE = 'You are Phone AI, a friendly assistant running on an old phone. Keep answers short: 1 to 3 sentences. ' +
+    'Answer the latest question directly; do not repeat earlier answers. If you are not sure about a fact, say you are not sure.';
+  var LANGS = {
+    auto: { rule: 'Always reply in the same language and script as the user\'s latest message: English gets English; Hindi in Devanagari gets Hindi in Devanagari; Hinglish (Hindi written in English letters) gets Hinglish.',
+      ex: [['Kaise ho aap?', 'Main theek hoon, shukriya! Aap kaise ho?'],
+           ['पानी को अंग्रेज़ी में क्या कहते हैं?', 'पानी को अंग्रेज़ी में "water" कहते हैं।'],
+           ['What is apple called in Hindi?', 'Apple is called "सेब" (seb) in Hindi.']] },
+    en: { rule: 'Always reply in simple English, even if the user writes in Hindi or Hinglish.',
+      ex: [['Kaise ho aap?', "I'm doing well, thank you! How are you?"],
+           ['सेब को अंग्रेज़ी में क्या कहते हैं?', '"सेब" is called "apple" in English.']] },
+    hi: { rule: 'Always reply in simple Hindi written in Devanagari script (हिंदी), even if the user writes in English or Hinglish. Do not reply in English.',
+      ex: [['How are you?', 'मैं ठीक हूँ, धन्यवाद! आप कैसे हैं?'],
+           ['What is apple called in Hindi?', 'Apple को हिंदी में "सेब" कहते हैं।']] },
+    hinglish: { rule: 'Always reply in Hinglish: Hindi words written in English (Latin) letters, like "Main theek hoon, aap kaise ho?". Never use Devanagari script.',
+      ex: [['How are you?', 'Main theek hoon, shukriya! Aap kaise ho?'],
+           ['What is apple called in Hindi?', 'Apple ko Hindi mein "seb" kehte hain.']] }
+  };
+  var lang = 'auto';
+  try { lang = localStorage.getItem('ai_lang') || 'auto'; } catch (e) {}
+  if (!LANGS[lang]) lang = 'auto';
+  function prefix() {   // same prefix every time, so the phone can cache it and answer faster
+    var L = LANGS[lang], m = [{ role: 'system', content: BASE + ' ' + L.rule }];
+    L.ex.forEach(function (p) { m.push({ role: 'user', content: p[0] }); m.push({ role: 'assistant', content: p[1] }); });
+    return m;
+  }
+  function showLang() {
+    Array.prototype.forEach.call(document.querySelectorAll('.lang'), function (b) {
+      var on = b.getAttribute('data-lang') === lang; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); b.setAttribute('role', 'radio');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.lang'), function (b) {
+    b.onclick = function () { lang = b.getAttribute('data-lang'); try { localStorage.setItem('ai_lang', lang); } catch (e) {} showLang(); };
+  });
+  showLang();
   var MAX_TOKENS = 256, KEEP = 6;
-  var history = [], ctrl = null;
+  var history = [], ctrl = null, model = '';
   var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 
   function getKey() { try { return localStorage.getItem('ai_key') || ''; } catch (e) { return ''; } }
@@ -142,7 +187,10 @@
   function state(on, text) { $('dot').className = 'dot ' + (on ? 'on' : 'off'); $('stateText').textContent = text; }
   function health() {
     fetch('/ai/health', { cache: 'no-store' }).then(function (r) {
-      if (r.ok) state(true, 'Online · on-device');
+      if (r.ok) { state(true, 'Online · ' + (model || 'on-device'));
+        if (!model && getKey()) fetch('/ai/v1/models', { headers: { Authorization: 'Bearer ' + getKey() } })
+          .then(function (m) { return m.ok ? m.json() : null; })
+          .then(function (j) { if (j && j.data && j.data[0]) { model = j.data[0].id; state(true, 'Online · ' + model); } }).catch(function () {}); }
       else state(false, r.status === 503 ? 'Loading model…' : 'Sleeping – run “phone-ai start”');
     }).catch(function () { state(false, 'Offline'); });
   }
@@ -197,7 +245,8 @@
     fetch(API, {
       method: 'POST', signal: ctrl ? ctrl.signal : undefined,
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
-      body: JSON.stringify({ messages: [{ role: 'system', content: SYSTEM }].concat(history.slice(-KEEP)), stream: true, max_tokens: MAX_TOKENS })
+      body: JSON.stringify({ messages: prefix().concat(history.slice(-KEEP)), stream: true, max_tokens: MAX_TOKENS,
+        temperature: 0.4, top_p: 0.9, repeat_penalty: 1.15, cache_prompt: true })
     }).then(function (r) {
       if (r.status === 401 || r.status === 403) { setKey(''); showLogin(true); throw new Error('auth'); }
       if (r.status === 502) throw new Error('The AI is asleep. On the phone run: phone-ai start');

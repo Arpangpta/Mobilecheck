@@ -11,8 +11,9 @@ mkdir -p "$AI/models" "$AI/www"
 
 # name | Hugging Face repo | file pattern | about
 CATALOG='qwen|Qwen/Qwen2.5-0.5B-Instruct-GGUF|q4_k_m.gguf|Qwen2.5 0.5B - best balance (default, ~400 MB)
-llama|bartowski/Llama-3.2-1B-Instruct-GGUF|Q4_K_M.gguf|Meta Llama 3.2 1B - smarter, slow on this phone (~800 MB)
+llama|bartowski/Llama-3.2-1B-Instruct-GGUF|Q4_K_M.gguf|Meta Llama 3.2 1B - officially supports Hindi, slower (~800 MB)
 smollm|HuggingFaceTB/SmolLM2-360M-Instruct-GGUF|q8_0.gguf|SmolLM2 360M - faster, simpler answers (~380 MB)
+gemma1b|ggml-org/gemma-3-1b-it-GGUF|Q4_K_M.gguf|Google Gemma 3 1B - multilingual, good Hindi (~800 MB)
 gemma|ggml-org/gemma-3-270m-it-GGUF|Q8_0.gguf|Google Gemma 3 270M - fast, short tasks (~290 MB)
 tiny|HuggingFaceTB/SmolLM2-135M-Instruct-GGUF|q8_0.gguf|SmolLM2 135M - fastest, often wrong (~145 MB)'
 
@@ -142,7 +143,7 @@ case "$1" in
 
   models)
     echo "Available models (current: $(conf_get model qwen)):"
-    echo "$CATALOG" | while IFS='|' read -r n r p d; do printf "  %-7s %s\n" "$n" "$d"; done
+    echo "$CATALOG" | while IFS='|' read -r n r p d; do printf "  %-8s %s\n" "$n" "$d"; done
     echo; echo "Switch with:  phone-ai model NAME" ;;
 
   model)
