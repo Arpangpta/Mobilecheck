@@ -151,10 +151,10 @@ The first start downloads the model (~400 MB). Get the chat password with `phone
 | Model (`phone-ai model NAME`) | Size | Notes |
 |---|---|---|
 | `qwen` – Qwen2.5 0.5B Instruct (default) | ~400 MB | best balance |
-| `qwen3` – Qwen3 0.6B | ~400 MB | fast, better Hindi (119 languages) – good middle ground |
+| `qwen3` – Qwen3 0.6B | ~400 MB | fast, better Hindi & Bengali (119 languages) – good middle ground |
 | `llama` – Llama 3.2 1B Instruct | ~800 MB | officially supports Hindi; about half the speed |
 | `smollm` – SmolLM2 360M | ~380 MB | faster, simpler |
-| `gemma1b` – Gemma 3 1B | ~800 MB | multilingual, good for Hindi |
+| `gemma1b` – Gemma 3 1B | ~800 MB | multilingual (140 languages), good for Hindi & Bengali |
 | `gemma` – Gemma 3 270M | ~290 MB | fast, short tasks |
 | `tiny` – SmolLM2 135M | ~145 MB | fastest, often wrong |
 

@@ -129,6 +129,7 @@
       <button class="lang" type="button" data-lang="en">English</button>
       <button class="lang" type="button" data-lang="hi">हिंदी</button>
       <button class="lang" type="button" data-lang="hinglish">Hinglish</button>
+      <button class="lang" type="button" data-lang="bn">বাংলা</button>
     </div>
     <div class="composer">
       <textarea id="q" rows="1" placeholder="Message Phone AI…" enterkeyhint="send"></textarea>
@@ -146,16 +147,20 @@
   var BASE = 'You are Phone AI, a friendly assistant running on an old phone. Keep answers short: 1 to 3 sentences. ' +
     'Answer the latest question directly; do not repeat earlier answers. If you are not sure about a fact, say you are not sure.';
   var LANGS = {
-    auto: { rule: 'Always reply in the same language and script as the user\'s latest message: English gets English; Hindi in Devanagari gets Hindi in Devanagari; Hinglish (Hindi written in English letters) gets Hinglish.',
+    auto: { rule: 'Always reply in the same language and script as the user\'s latest message: English gets English; Hindi in Devanagari gets Hindi in Devanagari; Bengali in Bengali script gets Bengali; Hinglish (Hindi written in English letters) gets Hinglish.',
       ex: [['Kaise ho aap?', 'Main theek hoon, shukriya! Aap kaise ho?'],
            ['पानी को अंग्रेज़ी में क्या कहते हैं?', 'पानी को अंग्रेज़ी में "water" कहते हैं।'],
-           ['What is apple called in Hindi?', 'Apple is called "सेब" (seb) in Hindi.']] },
+           ['What is apple called in Hindi?', 'Apple is called "सेब" (seb) in Hindi.'],
+           ['তুমি কেমন আছো?', 'আমি ভালো আছি, ধন্যবাদ! তুমি কেমন আছো?']] },
     en: { rule: 'Always reply in simple English, even if the user writes in Hindi or Hinglish.',
       ex: [['Kaise ho aap?', "I'm doing well, thank you! How are you?"],
            ['सेब को अंग्रेज़ी में क्या कहते हैं?', '"सेब" is called "apple" in English.']] },
     hi: { rule: 'Always reply in simple Hindi written in Devanagari script (हिंदी), even if the user writes in English or Hinglish. Do not reply in English.',
       ex: [['How are you?', 'मैं ठीक हूँ, धन्यवाद! आप कैसे हैं?'],
            ['What is apple called in Hindi?', 'Apple को हिंदी में "सेब" कहते हैं।']] },
+    bn: { rule: 'Always reply in simple Bengali written in Bengali script (বাংলা), even if the user writes in English or Hindi. Do not reply in English or Hindi.',
+      ex: [['How are you?', 'আমি ভালো আছি, ধন্যবাদ! আপনি কেমন আছেন?'],
+           ['What is water called in Bengali?', 'Water কে বাংলায় "জল" বা "পানি" বলে।']] },
     hinglish: { rule: 'Always reply in Hinglish: Hindi words written in English (Latin) letters, like "Main theek hoon, aap kaise ho?". Never use Devanagari script.',
       ex: [['How are you?', 'Main theek hoon, shukriya! Aap kaise ho?'],
            ['What is apple called in Hindi?', 'Apple ko Hindi mein "seb" kehte hain.']] }
