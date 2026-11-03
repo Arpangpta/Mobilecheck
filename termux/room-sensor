@@ -1,0 +1,62 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# room-sensor: control the Termux room sensor.
+DIR="$HOME/room-sensor"
+DATA="$HOME/.room-sensor"
+PIDF="$DATA/pid"
+LOG="$DATA/sensor.log"
+mkdir -p "$DATA"
+
+running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
+
+setconf() { python - "$1" "$2" <<'PY'
+import json, os, sys
+p = os.path.expanduser("~/.room-sensor/config.json")
+try: c = json.load(open(p))
+except Exception: c = {}
+k, v = sys.argv[1], sys.argv[2]
+if k == "light_index": v = 1 - int(c.get("light_index", 0))
+c[k] = v
+json.dump(c, open(p, "w"), indent=1)
+print("Saved %s = %s" % (k, v))
+PY
+}
+
+case "$1" in
+  start)
+    if running; then echo "Already running. See: room-sensor status"; exit 0; fi
+    termux-wake-lock
+    nohup python "$DIR/sensor.py" run >> "$LOG" 2>&1 &
+    echo $! > "$PIDF"
+    sleep 3
+    if running; then echo "Started. It keeps running with the screen off."; tail -n 3 "$LOG";
+    else echo "It stopped right away:"; tail -n 10 "$LOG"; fi ;;
+  stop)
+    if running; then kill "$(cat "$PIDF")"; fi
+    rm -f "$PIDF"; termux-sensor -c >/dev/null 2>&1; termux-wake-unlock
+    echo "Stopped." ;;
+  status)
+    if running; then echo "RUNNING"; else echo "NOT running (start it with: room-sensor start)"; fi
+    echo "--- last log lines ---"; tail -n 15 "$LOG" 2>/dev/null ;;
+  check) python "$DIR/sensor.py" check ;;
+  test)  python "$DIR/sensor.py" test ;;
+  url)   [ -z "$2" ] && { echo "Usage: room-sensor url https://script.google.com/.../exec"; exit 1; }
+         setconf endpoint "$2" ;;
+  room)  [ -z "$2" ] && { echo "Usage: room-sensor room bedroom"; exit 1; }
+         setconf room "$2" ;;
+  swap-light) setconf light_index x ;;
+  update) curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash ;;
+  *)
+    cat <<'TXT'
+room-sensor commands:
+  room-sensor url <URL>   save your Google Apps Script URL (ends in /exec)
+  room-sensor room <name> set the room name (e.g. bedroom)
+  room-sensor test        send one test row to the sheet
+  room-sensor check       show current sensor values
+  room-sensor start       start sensing in the background
+  room-sensor status      is it running? show recent log
+  room-sensor stop        stop sensing
+  room-sensor swap-light  use the other light-chip value as light
+  room-sensor update      download the latest version
+TXT
+    ;;
+esac

@@ -62,3 +62,34 @@ If the internet drops, rows wait on the phone and are sent later.
 ### D. Get insights
 Open the sheet anytime, or **File → Download → CSV** and give it to Claude Code:
 "what happened in my room this week?"
+
+---
+
+## Option 2: Termux version (better – real light sensor, runs with screen off)
+
+Needs the **Termux** and **Termux:API** apps, both from F-Droid. It sends the same columns to the same
+Google Sheet (noise is left empty in this version).
+
+In Termux:
+```
+curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash
+room-sensor url PASTE_YOUR_EXEC_URL
+room-sensor test
+room-sensor start
+```
+
+| Command | What it does |
+|---|---|
+| `room-sensor test` | sends one test row and prints the sheet's reply |
+| `room-sensor check` | shows movement, light and battery right now |
+| `room-sensor start` / `stop` | start / stop sensing in the background |
+| `room-sensor status` | is it running + recent log |
+| `room-sensor room bedroom` | set the room name |
+| `room-sensor swap-light` | if the light value looks wrong (the light chip also has a proximity value) |
+| `room-sensor update` | get the latest version |
+
+If `test` says **wrong key**: the sheet is locked to the phone that sent first. In Apps Script open
+**Project Settings → Script properties**, delete `PHONE_KEY`, and run `room-sensor test` again.
+
+Keep Termux alive on MIUI: Settings → Apps → Termux → Autostart **on**, Battery saver **No restrictions**,
+and lock Termux in the recent-apps screen.
