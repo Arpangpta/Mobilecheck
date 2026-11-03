@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111111">
+<title>Room Sensor</title>
+<style>
+  :root { --bg:#111; --card:#1d1d1d; --fg:#eee; --mute:#999; --ok:#3fbf6f; --warn:#e0a030; --bad:#e05050; --acc:#4a9eff; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.4 sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--mute); font-size:13px; margin-bottom:14px; }
+  .card { background:var(--card); border-radius:10px; padding:14px; margin-bottom:12px; }
+  .grid { display:-webkit-flex; display:flex; -webkit-flex-wrap:wrap; flex-wrap:wrap; margin:0 -5px; }
+  .tile { width:50%; padding:5px; }
+  .tile div { background:#262626; border-radius:8px; padding:10px; }
+  .lbl { color:var(--mute); font-size:12px; text-transform:uppercase; }
+  .val { font-size:26px; font-weight:bold; }
+  .small { font-size:13px; color:var(--mute); }
+  label { display:block; margin:8px 0; }
+  input[type=text] { width:100%; padding:10px; font-size:15px; background:#000; color:var(--fg); border:1px solid #444; border-radius:6px; }
+  button { font-size:17px; padding:12px 16px; border:0; border-radius:8px; background:var(--acc); color:#fff; margin:4px 4px 4px 0; }
+  button.sec { background:#333; }
+  button.big { width:100%; font-size:20px; padding:16px; }
+  #status { font-weight:bold; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  #dim { display:none; position:fixed; left:0; top:0; right:0; bottom:0; background:#000; color:#333; z-index:9; text-align:center; padding-top:40vh; font-size:40px; }
+  #log { font-family:monospace; font-size:12px; color:var(--mute); white-space:pre-wrap; max-height:160px; overflow:auto; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+
+<h1>Room Sensor</h1>
+<div class="sub">Old phone &rarr; Google Sheet. Keep this page open, screen on, phone on charger.</div>
+
+<div class="card">
+  <div>Status: <span id="status" class="warn">Not started</span></div>
+  <div class="small" id="sendinfo">Nothing sent yet</div>
+</div>
+
+<div class="card">
+  <div class="grid">
+    <div class="tile"><div><div class="lbl">Movement</div><div class="val" id="vMotion">&ndash;</div><div class="small">0 = still</div></div></div>
+    <div class="tile"><div><div class="lbl">Noise</div><div class="val" id="vNoise">&ndash;</div><div class="small">0&ndash;100</div></div></div>
+    <div class="tile"><div><div class="lbl">Light (rough)</div><div class="val" id="vLight">&ndash;</div><div class="small">0 dark &ndash; 255 bright</div></div></div>
+    <div class="tile"><div><div class="lbl">Battery</div><div class="val" id="vBatt">&ndash;</div><div class="small" id="vPower">&nbsp;</div></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <button class="big" id="btnStart">&#9654; Start sensing</button>
+  <button class="sec" id="btnDim">Dim screen</button>
+  <button class="sec" id="btnTest">Send test row</button>
+  <button class="sec" id="btnSetup">Settings</button>
+</div>
+
+<div class="card hidden" id="setup">
+  <b>Settings</b>
+  <label>Google Apps Script URL<br><input type="text" id="inEndpoint" placeholder="https://script.google.com/macros/s/.../exec"></label>
+  <label>Secret key (same as in Code.gs)<br><input type="text" id="inKey" placeholder="my-secret"></label>
+  <label>Room name<br><input type="text" id="inRoom" placeholder="bedroom"></label>
+  <label><input type="checkbox" id="useMotion" checked> Movement (motion sensor)</label>
+  <label><input type="checkbox" id="useNoise" checked> Noise level (microphone &ndash; only loudness, nothing is recorded)</label>
+  <label><input type="checkbox" id="useLight"> Light via camera (rough; uses more battery &amp; heat)</label>
+  <button id="btnSave">Save</button>
+</div>
+
+<div class="card">
+  <div class="lbl">Log</div>
+  <div id="log"></div>
+</div>
+
+<div id="dim"><span id="dimClock"></span><div style="font-size:14px">tap to wake</div></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var INTERVAL_MS = 60 * 1000;      // one row per minute
+  var MOVE_THRESHOLD = 0.6;          // m/s^2 change that counts as "movement"
+  var QUEUE_KEY = 'rs_queue', MAX_QUEUE = 3000;
+
+  // ---------- storage helpers (never crash if storage is blocked) ----------
+  function sget(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }
+  function sset(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  // ---------- log ----------
+  function log(msg) {
+    var t = new Date().toTimeString().slice(0, 8);
+    var el = $('log');
+    el.textContent = t + '  ' + msg + '\n' + el.textContent.slice(0, 3000);
+  }
+  function setStatus(text, cls) { var s = $('status'); s.textContent = text; s.className = cls; }
+
+  // ---------- settings (URL params override, then saved) ----------
+  var cfg = {
+    endpoint: sget('rs_endpoint', ''), key: sget('rs_key', ''), room: sget('rs_room', 'room'),
+    motion: sget('rs_motion', '1') === '1', noise: sget('rs_noise', '1') === '1', light: sget('rs_light', '0') === '1'
+  };
+  (function readParams() {
+    var q = location.search.replace(/^\?/, '').split('&');
+    for (var i = 0; i < q.length; i++) {
+      var p = q[i].split('='); if (p.length < 2) continue;
+      var k = decodeURIComponent(p[0]), v = decodeURIComponent(p.slice(1).join('='));
+      if (k === 'endpoint') { cfg.endpoint = v; sset('rs_endpoint', v); }
+      if (k === 'key') { cfg.key = v; sset('rs_key', v); }
+      if (k === 'room') { cfg.room = v; sset('rs_room', v); }
+    }
+  })();
+  function fillSetup() {
+    $('inEndpoint').value = cfg.endpoint; $('inKey').value = cfg.key; $('inRoom').value = cfg.room;
+    $('useMotion').checked = cfg.motion; $('useNoise').checked = cfg.noise; $('useLight').checked = cfg.light;
+  }
+  fillSetup();
+  if (!cfg.endpoint) { $('setup').className = 'card'; log('First time: fill in Settings, then Save.'); }
+
+  $('btnSetup').onclick = function () { $('setup').className = $('setup').className === 'card' ? 'card hidden' : 'card'; };
+  $('btnSave').onclick = function () {
+    cfg.endpoint = $('inEndpoint').value.replace(/\s/g, '');
+    cfg.key = $('inKey').value.replace(/^\s+|\s+$/g, '');
+    cfg.room = $('inRoom').value.replace(/^\s+|\s+$/g, '') || 'room';
+    cfg.motion = $('useMotion').checked; cfg.noise = $('useNoise').checked; cfg.light = $('useLight').checked;
+    sset('rs_endpoint', cfg.endpoint); sset('rs_key', cfg.key); sset('rs_room', cfg.room);
+    sset('rs_motion', cfg.motion ? '1' : '0'); sset('rs_noise', cfg.noise ? '1' : '0'); sset('rs_light', cfg.light ? '1' : '0');
+    $('setup').className = 'card hidden';
+    log('Settings saved.' + (running ? ' Reload the page to apply sensor changes.' : ''));
+  };
+
+  // ---------- per-minute accumulators ----------
+  var acc;
+  function resetAcc() { acc = { mSum: 0, mMax: 0, mN: 0, moveSecs: 0, nSum: 0, nMax: 0, nN: 0, light: null }; }
+  resetAcc();
+
+  // ---------- motion ----------
+  var lastMag = null, secMax = 0;
+  function onMotion(e) {
+    var a = e.accelerationIncludingGravity || e.acceleration; if (!a || a.x === null) return;
+    var mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    if (lastMag !== null) { var d = Math.abs(mag - lastMag); if (d > secMax) secMax = d; }
+    lastMag = mag;
+  }
+
+  // ---------- noise ----------
+  var analyser = null, audioBuf = null;
+  function startNoise() {
+    var gum = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    if (!gum) { log('Microphone not available in this browser (needs Chrome + https).'); return; }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AC();
+      var src = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser(); analyser.fftSize = 1024;
+      audioBuf = new Float32Array(analyser.fftSize);
+      src.connect(analyser);
+      log('Microphone on (only loudness is measured).');
+    }).catch(function (err) { log('Microphone blocked: ' + err.name); });
+  }
+  function readNoise() {
+    if (!analyser) return null;
+    if (analyser.getFloatTimeDomainData) analyser.getFloatTimeDomainData(audioBuf);
+    else { var b = new Uint8Array(analyser.fftSize); analyser.getByteTimeDomainData(b); for (var j = 0; j < b.length; j++) audioBuf[j] = (b[j] - 128) / 128; }
+    var s = 0; for (var i = 0; i < audioBuf.length; i++) s += audioBuf[i] * audioBuf[i];
+    var rms = Math.sqrt(s / audioBuf.length);
+    var db = 20 * Math.log(Math.max(rms, 1e-5)) / Math.LN10;  // -100..0
+    return Math.max(0, Math.min(100, Math.round((db + 80) * 1.25))); // map ~-80dB..0dB -> 0..100
+  }
+
+  // ---------- light via camera ----------
+  var video = null, canvas = null, cctx = null;
+  function startLight() {
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { log('Camera not available.'); return; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 160, height: 120 } }).then(function (stream) {
+      video = document.createElement('video'); video.setAttribute('playsinline', ''); video.muted = true;
+      video.srcObject = stream; video.play();
+      canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 24; cctx = canvas.getContext('2d');
+      log('Camera on for light level (no photos are saved or sent).');
+    }).catch(function (err) { log('Camera blocked: ' + err.name); });
+  }
+  function readLight() {
+    if (!video || video.readyState < 2) return null;
+    cctx.drawImage(video, 0, 0, 32, 24);
+    var d = cctx.getImageData(0, 0, 32, 24).data, s = 0;
+    for (var i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return Math.round(s / (d.length / 4));
+  }
+
+  // ---------- battery & power cuts ----------
+  var batt = null, lastCharging = null;
+  function startBattery() {
+    if (!navigator.getBattery) { log('Battery info not available in this browser.'); return; }
+    navigator.getBattery().then(function (b) {
+      batt = b; lastCharging = b.charging; showBatt();
+      b.addEventListener('levelchange', showBatt);
+      b.addEventListener('chargingchange', function () {
+        showBatt();
+        if (lastCharging !== null && b.charging !== lastCharging) {
+          var ev = b.charging ? 'power_back' : 'power_cut';
+          log(ev === 'power_cut' ? 'Charger disconnected / power cut!' : 'Power is back.');
+          enqueue(makeRow(ev)); flush();
+        }
+        lastCharging = b.charging;
+      });
+    });
+  }
+  function showBatt() {
+    if (!batt) return;
+    $('vBatt').textContent = Math.round(batt.level * 100) + '%';
+    $('vPower').textContent = batt.charging ? 'charging' : 'NOT charging';
+    $('vPower').className = batt.charging ? 'small ok' : 'small bad';
+  }
+
+  // ---------- keep screen awake ----------
+  var wakeLock = null;
+  function keepAwake() {
+    if (navigator.wakeLock && navigator.wakeLock.request) {
+      navigator.wakeLock.request('screen').then(function (l) { wakeLock = l; log('Screen will stay on.'); })
+        .catch(function () { log('Could not lock screen on - set phone Sleep to "Never".'); });
+    } else { log('Set phone Settings > Lock screen > Sleep to "Never".'); }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && running && navigator.wakeLock) keepAwake();
+    if (document.visibilityState === 'hidden' && running) log('Page hidden - readings pause. Keep this page on screen.');
+  });
+
+  // ---------- rows, queue, sending ----------
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function localTime(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+  function r1(x) { return Math.round(x * 100) / 100; }
+  function makeRow(event) {
+    return {
+      time: localTime(new Date()), room: cfg.room, event: event || 'reading',
+      motion_avg: acc.mN ? r1(acc.mSum / acc.mN) : '', motion_max: acc.mN ? r1(acc.mMax) : '', moving_secs: acc.mN ? acc.moveSecs : '',
+      noise_avg: acc.nN ? Math.round(acc.nSum / acc.nN) : '', noise_max: acc.nN ? acc.nMax : '',
+      light: acc.light === null ? '' : acc.light,
+      battery: batt ? Math.round(batt.level * 100) : '', charging: batt ? (batt.charging ? 'yes' : 'no') : ''
+    };
+  }
+  function loadQueue() { try { return JSON.parse(sget(QUEUE_KEY, '[]')) || []; } catch (e) { return []; } }
+  function saveQueue(q) { if (q.length > MAX_QUEUE) q = q.slice(q.length - MAX_QUEUE); sset(QUEUE_KEY, JSON.stringify(q)); }
+  function enqueue(row) { var q = loadQueue(); q.push(row); saveQueue(q); }
+
+  var sending = false;
+  function flush() {
+    if (sending || !cfg.endpoint) return;
+    var q = loadQueue(); if (!q.length) return;
+    var batch = q.slice(0, 200);
+    var body = JSON.stringify({ key: cfg.key, rows: batch });
+    sending = true;
+    var done = function () {
+      sending = false;
+      var rest = loadQueue().slice(batch.length); saveQueue(rest);
+      $('sendinfo').textContent = 'Last sent ' + localTime(new Date()) + ' (' + batch.length + ' rows). Waiting: ' + rest.length;
+      setStatus('Running', 'ok');
+      if (rest.length) setTimeout(flush, 2000);
+    };
+    var fail = function (err) {
+      sending = false;
+      $('sendinfo').textContent = 'Send failed (' + err + '). Will retry. Waiting: ' + q.length;
+      setStatus(running ? 'Running - offline' : 'Not started', 'warn');
+    };
+    // text/plain + no-cors = no CORS preflight, works with Google Apps Script.
+    if (window.fetch) {
+      fetch(cfg.endpoint, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        .then(done).catch(function (e) { fail(e.message || 'network'); });
+    } else {
+      var x = new XMLHttpRequest(); x.open('POST', cfg.endpoint);
+      x.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
+      x.onload = done; x.onerror = function () { fail('network'); }; x.send(body);
+    }
+  }
+
+  // ---------- main loop ----------
+  var running = false, minuteStart = 0;
+  function tickSecond() {
+    if (cfg.motion) {
+      acc.mSum += secMax; acc.mN++; if (secMax > acc.mMax) acc.mMax = secMax;
+      if (secMax > MOVE_THRESHOLD) acc.moveSecs++;
+      $('vMotion').textContent = r1(secMax);
+      secMax = 0;
+    }
+    var n = readNoise();
+    if (n !== null) { acc.nSum += n; acc.nN++; if (n > acc.nMax) acc.nMax = n; $('vNoise').textContent = n; }
+    if (Date.now() - minuteStart >= INTERVAL_MS) {
+      var l = readLight(); if (l !== null) { acc.light = l; $('vLight').textContent = l; }
+      enqueue(makeRow()); resetAcc(); minuteStart = Date.now(); flush();
+    }
+  }
+
+  $('btnStart').onclick = function () {
+    if (running) return;
+    if (!cfg.endpoint) { $('setup').className = 'card'; log('Add the Apps Script URL in Settings first.'); return; }
+    running = true;
+    $('btnStart').textContent = 'Sensing...'; $('btnStart').disabled = true;
+    setStatus('Running', 'ok');
+    if (cfg.motion) {
+      if (window.DeviceMotionEvent) { window.addEventListener('devicemotion', onMotion); log('Motion sensor on.'); }
+      else log('Motion sensor not available.');
+    }
+    if (cfg.noise) startNoise();
+    if (cfg.light) startLight();
+    startBattery();
+    keepAwake();
+    minuteStart = Date.now();
+    setInterval(tickSecond, 1000);
+    enqueue(makeRow('started')); flush();
+    log('Started. A row is sent every minute.');
+  };
+
+  $('btnTest').onclick = function () {
+    if (!cfg.endpoint) { log('Add the Apps Script URL in Settings first.'); return; }
+    var l = readLight(); if (l !== null) { acc.light = l; $('vLight').textContent = l; }
+    enqueue(makeRow('test')); flush(); log('Test row sent - check your Google Sheet.');
+  };
+
+  $('btnDim').onclick = function () { $('dim').style.display = 'block'; };
+  $('dim').onclick = function () { $('dim').style.display = 'none'; };
+  setInterval(function () { $('dimClock').textContent = new Date().toTimeString().slice(0, 5); }, 10000);
+  $('dimClock').textContent = new Date().toTimeString().slice(0, 5);
+
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost') log('Warning: open this page over https or the microphone will not work.');
+  var waiting = loadQueue().length; if (waiting) $('sendinfo').textContent = 'Waiting to send: ' + waiting;
+})();
+</script>
+</body>
+</html>
