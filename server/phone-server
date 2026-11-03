@@ -1,0 +1,193 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# phone-server: host websites on this phone (nginx + free Cloudflare tunnel).
+# Sites are pulled from GitHub. The "home" site is served at /, every site also at /<name>/.
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+DATA="${PHONE_SERVER_DATA:-$HOME/.phone-server}"
+REPOS="$DATA/repos"; SERVE="$DATA/serve"; LIST="$DATA/sites.tsv"; HOMEF="$DATA/home"
+CONF="$DATA/nginx.conf"; PORT="${PHONE_SERVER_PORT:-8080}"
+SELF_URL="https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/server/install.sh"
+mkdir -p "$DATA" "$REPOS" "$SERVE" "$DATA/tmp" "$DATA/www"
+touch "$LIST"
+
+say() { echo "$(date +%H:%M:%S) $*"; }
+alive() { [ -f "$1" ] && kill -0 "$(cat "$1")" 2>/dev/null; }
+valid_name() { [[ "$1" =~ ^[a-z0-9][a-z0-9-]*$ ]]; }
+
+# ---------- sites ----------
+fetch_site() {  # name repo branch
+  local dir="$REPOS/$1"
+  if [ -d "$dir/.git" ]; then
+    git -C "$dir" fetch -q --depth 1 origin "$3" && git -C "$dir" reset -q --hard FETCH_HEAD
+  else
+    rm -rf "$dir"; git clone -q --depth 1 -b "$3" "$2" "$dir"
+  fi
+}
+
+link_sites() {
+  find "$SERVE" -mindepth 1 -maxdepth 1 -type l -delete
+  while IFS=$'\t' read -r name repo branch sub; do
+    [ -z "$name" ] && continue
+    ln -sfn "$REPOS/$name/${sub:-.}" "$SERVE/$name"
+  done < "$LIST"
+}
+
+write_index() {  # fallback home page listing the sites
+  {
+    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    echo '<title>Phone server</title><body style="font-family:sans-serif;padding:24px"><h1>Phone server</h1><ul>'
+    while IFS=$'\t' read -r name _; do [ -n "$name" ] && echo "<li><a href=\"/$name/\">$name</a></li>"; done < "$LIST"
+    echo '</ul></body>'
+  } > "$DATA/www/index.html"
+}
+
+write_conf() {
+  local home=""; [ -f "$HOMEF" ] && home="$(cat "$HOMEF")"
+  local homeroot="$DATA/www"; [ -n "$home" ] && [ -e "$SERVE/$home" ] && homeroot="$SERVE/$home"
+  {
+    echo "worker_processes 1;"
+    echo "pid $DATA/nginx.pid;"
+    echo "error_log $DATA/nginx-error.log;"
+    echo "events { worker_connections 256; }"
+    echo "http {"
+    echo "  include $PREFIX/etc/nginx/mime.types;"
+    echo "  default_type application/octet-stream;"
+    echo "  access_log $DATA/access.log;"
+    echo "  sendfile on; gzip on; gzip_types text/css application/javascript application/json image/svg+xml text/plain;"
+    for t in client_body proxy fastcgi uwsgi scgi; do echo "  ${t}_temp_path $DATA/tmp/$t;"; done
+    echo "  server {"
+    echo "    listen 127.0.0.1:$PORT;"
+    echo "    location = /status.json { alias $DATA/status.json; default_type application/json; add_header Cache-Control no-store; }"
+    while IFS=$'\t' read -r name _; do
+      [ -z "$name" ] && continue
+      echo "    location = /$name { return 301 /$name/; }"
+      echo "    location /$name/ { root $SERVE; try_files \$uri \$uri/ /$name/index.html; }"
+    done < "$LIST"
+    echo "    location / { root $homeroot; try_files \$uri \$uri/ /index.html; }"
+    echo "  }"
+    echo "}"
+  } > "$CONF"
+}
+
+rebuild() {  # relink + rewrite config + reload nginx if running
+  link_sites; write_index; write_conf
+  if alive "$DATA/nginx.pid"; then nginx -c "$CONF" -s reload 2>/dev/null; fi
+}
+
+update_all() {
+  local ok=0
+  while IFS=$'\t' read -r name repo branch sub; do
+    [ -z "$name" ] && continue
+    if fetch_site "$name" "$repo" "$branch"; then ok=$((ok+1)); else say "Could not update $name"; fi
+  done < "$LIST"
+  rebuild
+  say "Updated $ok site(s)."
+}
+
+# ---------- tunnel & status ----------
+start_tunnel() {
+  : > "$DATA/tunnel.log"
+  nohup cloudflared tunnel --no-autoupdate --protocol http2 --url "http://127.0.0.1:$PORT" >> "$DATA/tunnel.log" 2>&1 &
+  echo $! > "$DATA/tunnel.pid"
+}
+
+tunnel_url() { grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$DATA/tunnel.log" 2>/dev/null | tail -n 1; }
+
+write_status() {
+  local up=$(( $(date +%s) - $(cat "$DATA/started" 2>/dev/null || date +%s) ))
+  termux-battery-status 2>/dev/null | jq -c --argjson up "$up" --arg t "$(date -Iseconds)" \
+    '{battery:.percentage, charging:(.plugged != "UNPLUGGED"), temp:.temperature, uptime:$up, time:$t, device:"2017 Redmi Y1"}' \
+    > "$DATA/status.json.tmp" 2>/dev/null && [ -s "$DATA/status.json.tmp" ] && mv "$DATA/status.json.tmp" "$DATA/status.json"
+}
+
+watch_loop() {  # runs in background: status every minute, site updates every 15 min, restarts dead parts
+  local n=0
+  while true; do
+    write_status
+    if ! alive "$DATA/nginx.pid"; then say "nginx stopped; restarting."; nginx -c "$CONF"; fi
+    if ! alive "$DATA/tunnel.pid"; then say "Tunnel stopped; restarting (the public URL will change)."; start_tunnel; fi
+    n=$((n+1)); if [ $((n % 15)) -eq 0 ]; then update_all; fi
+    sleep 60
+  done
+}
+
+# ---------- commands ----------
+case "$1" in
+  start)
+    if alive "$DATA/watch.pid"; then echo "Already running."; "$0" url; exit 0; fi
+    command -v termux-wake-lock >/dev/null && termux-wake-lock
+    date +%s > "$DATA/started"
+    rebuild
+    nginx -c "$CONF" || { echo "nginx failed to start:"; tail -n 5 "$DATA/nginx-error.log"; exit 1; }
+    start_tunnel
+    nohup "$0" _watch >> "$DATA/server.log" 2>&1 &
+    echo $! > "$DATA/watch.pid"
+    echo "Web server started on the phone. Getting your public address (up to 30 s)..."
+    for _ in $(seq 30); do u="$(tunnel_url)"; [ -n "$u" ] && break; sleep 1; done
+    if [ -n "$u" ]; then echo; echo "  Your website:  $u"; echo; echo "(The address changes if the server restarts. See it anytime: phone-server url)"
+    else echo "No public address yet. Try  phone-server url  in a minute, or  phone-server log"; fi ;;
+
+  stop)
+    for p in watch tunnel; do alive "$DATA/$p.pid" && kill "$(cat "$DATA/$p.pid")"; rm -f "$DATA/$p.pid"; done
+    alive "$DATA/nginx.pid" && nginx -c "$CONF" -s stop
+    command -v termux-wake-unlock >/dev/null && termux-wake-unlock
+    echo "Stopped." ;;
+
+  restart) "$0" stop; sleep 1; "$0" start ;;
+
+  url)
+    u="$(tunnel_url)"
+    if [ -n "$u" ] && alive "$DATA/tunnel.pid"; then echo "$u"
+      if command -v termux-clipboard-set >/dev/null; then echo -n "$u" | termux-clipboard-set; echo "(copied to clipboard)"; fi
+    else echo "Not online. Start with:  phone-server start"; fi ;;
+
+  status)
+    for p in nginx tunnel watch; do printf "%-8s %s\n" "$p" "$(alive "$DATA/$p.pid" && echo running || echo STOPPED)"; done
+    echo "address  $(tunnel_url)"
+    echo "home     $(cat "$HOMEF" 2>/dev/null)"
+    echo "sites:"; while IFS=$'\t' read -r name repo branch sub; do [ -n "$name" ] && echo "  /$name/  <- $repo ($branch) ${sub}"; done < "$LIST" ;;
+
+  add)  # add NAME REPO_URL [BRANCH] [FOLDER]
+    name="$2"; repo="$3"; branch="${4:-main}"; sub="${5:-.}"
+    if ! valid_name "$name" || [ -z "$repo" ]; then
+      echo "Usage: phone-server add NAME REPO_URL [BRANCH] [FOLDER]"
+      echo "  e.g. phone-server add myapp https://github.com/Arpangpta/myapp.git main dist"
+      echo "NAME: lowercase letters, numbers and dashes. The site will be at /NAME/"; exit 1; fi
+    grep -v "^$name	" "$LIST" > "$LIST.tmp"; mv "$LIST.tmp" "$LIST"
+    printf "%s\t%s\t%s\t%s\n" "$name" "$repo" "$branch" "$sub" >> "$LIST"
+    echo "Downloading $name..."
+    if fetch_site "$name" "$repo" "$branch"; then
+      [ -f "$REPOS/$name/$sub/index.html" ] || echo "Warning: no index.html in folder '$sub' of that repo."
+      [ -f "$HOMEF" ] || echo "$name" > "$HOMEF"
+      rebuild; echo "Added. It is at /$name/  (home page: $(cat "$HOMEF"))"
+    else echo "Could not download. Check the repo URL/branch (repo must be public)."; fi ;;
+
+  home)
+    if [ -z "$2" ] || ! grep -q "^$2	" "$LIST"; then echo "Usage: phone-server home NAME  (one of your sites)"; exit 1; fi
+    echo "$2" > "$HOMEF"; rebuild; echo "Home page is now: $2" ;;
+
+  remove)
+    grep -v "^$2	" "$LIST" > "$LIST.tmp"; mv "$LIST.tmp" "$LIST"; rm -rf "${REPOS:?}/$2"
+    [ "$(cat "$HOMEF" 2>/dev/null)" = "$2" ] && rm -f "$HOMEF"
+    rebuild; echo "Removed $2." ;;
+
+  update) update_all ;;
+  log) tail -n 20 "$DATA/server.log" 2>/dev/null; echo "--- tunnel ---"; tail -n 8 "$DATA/tunnel.log" 2>/dev/null ;;
+  self-update) exec bash -c "curl -fsSL $SELF_URL | bash" ;;
+  _watch) watch_loop ;;
+  *)
+    cat <<'TXT'
+phone-server commands:
+  phone-server start          start the web server + public address
+  phone-server url            show (and copy) the public address
+  phone-server status         what is running, which sites
+  phone-server stop | restart
+  phone-server add NAME REPO_URL [BRANCH] [FOLDER]   host a site from GitHub at /NAME/
+  phone-server home NAME      make a site the home page (/)
+  phone-server remove NAME
+  phone-server update         pull the latest version of all sites now (also automatic every 15 min)
+  phone-server log            recent log lines
+  phone-server self-update    get the latest phone-server
+TXT
+    ;;
+esac
