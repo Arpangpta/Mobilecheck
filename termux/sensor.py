@@ -7,7 +7,7 @@ Commands (via the `room-sensor` shortcut):
   check    - show one reading of each sensor
   test     - send a test row and print the sheet's reply
 """
-import json, os, random, string, subprocess, sys, threading, time, urllib.request
+import json, os, random, string, subprocess, sys, threading, time, urllib.error, urllib.request
 from datetime import datetime
 
 HOME = os.path.expanduser("~/.room-sensor")
@@ -84,6 +84,11 @@ def post(conf, rows):
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             txt = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return False, ("HTTP %d: the web app is not open to 'Anyone'. In Apps Script: Deploy > Manage "
+                           "deployments > pencil > Who has access: Anyone > Version: New version > Deploy" % e.code)
+        return False, "could not reach the sheet (%s)" % e
     except Exception as e:
         return False, "could not reach the sheet (%s)" % e
     try:

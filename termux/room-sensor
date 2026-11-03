@@ -53,7 +53,7 @@ case "$1" in
   room)  [ -z "$2" ] && { echo "Usage: room-sensor room bedroom"; exit 1; }
          setconf room "$2" ;;
   swap-light) setconf light_index x ;;
-  update) curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash ;;
+  update) exec bash -c "curl -fsSL https://raw.githubusercontent.com/Arpangpta/Mobilecheck/room-sensor/termux/install.sh | bash" ;;
   *)
     cat <<'TXT'
 room-sensor commands:
