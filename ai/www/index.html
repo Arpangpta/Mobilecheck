@@ -243,6 +243,10 @@
   });
   $('form').onsubmit = function (e) { e.preventDefault(); if (ctrl) ctrl.abort(); else submit(); };
 
+  var RETRY = [502, 520, 521, 522, 523, 524, 530];   // Cloudflare/tunnel hiccups: worth trying again
+  var TRIES = 3;
+  function wait(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+
   function submit() {
     var q = $('q').value.trim(); if (!q || ctrl) return;
     $('q').value = ''; grow(); if (touch) $('q').blur();
@@ -250,42 +254,59 @@
     var bubble = add('bot', 'Thinking…'), answer = '', started = Date.now(), timings = null;
     bubble.classList.add('typing');
     ctrl = window.AbortController ? new AbortController() : null; busy(true);
+    var body = JSON.stringify({ messages: prefix().concat(history.slice(-KEEP)), stream: true, max_tokens: MAX_TOKENS,
+      temperature: 0.4, top_p: 0.9, repeat_penalty: 1.15, cache_prompt: true });
 
-    fetch(API, {
-      method: 'POST', signal: ctrl ? ctrl.signal : undefined,
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() },
-      body: JSON.stringify({ messages: prefix().concat(history.slice(-KEEP)), stream: true, max_tokens: MAX_TOKENS,
-        temperature: 0.4, top_p: 0.9, repeat_penalty: 1.15, cache_prompt: true })
-    }).then(function (r) {
-      if (r.status === 401 || r.status === 403) { setKey(''); showLogin(true); throw new Error('auth'); }
-      if (r.status === 502) throw new Error('The AI is asleep. On the phone run: phone-ai start');
-      if (!r.ok || !r.body) throw new Error('The AI answered with an error (' + r.status + ').');
-      var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
-      function pump() {
-        return reader.read().then(function (res) {
-          if (res.done) return;
-          buf += dec.decode(res.value, { stream: true });
-          var lines = buf.split('\n'); buf = lines.pop();
-          lines.forEach(function (line) {
-            line = line.trim(); if (line.indexOf('data:') !== 0) return;
-            var data = line.slice(5).trim(); if (data === '[DONE]') return;
-            try {
-              var j = JSON.parse(data), d = j.choices && j.choices[0] && j.choices[0].delta;
-              if (d && d.content) { answer += d.content; var shown = clean(answer); if (shown) { bubble.classList.remove('typing'); bubble.textContent = shown; scroll(); } }
-              if (j.timings) timings = j.timings;
-            } catch (err) {}
+    function attempt(n) {
+      return fetch(API, {
+        method: 'POST', signal: ctrl ? ctrl.signal : undefined,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getKey() }, body: body
+      }).then(function (r) {
+        if (r.status === 401 || r.status === 403) { setKey(''); showLogin(true); throw new Error('auth'); }
+        if (RETRY.indexOf(r.status) >= 0) { var e = new Error('net'); e.code = r.status; throw e; }
+        if (!r.ok || !r.body) throw new Error('The AI answered with an error (' + r.status + ').');
+        var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+        function pump() {
+          return reader.read().then(function (res) {
+            if (res.done) return;
+            buf += dec.decode(res.value, { stream: true });
+            var lines = buf.split('\n'); buf = lines.pop();
+            lines.forEach(function (line) {
+              line = line.trim(); if (line.indexOf('data:') !== 0) return;
+              var data = line.slice(5).trim(); if (data === '[DONE]') return;
+              try {
+                var j = JSON.parse(data), d = j.choices && j.choices[0] && j.choices[0].delta;
+                if (d && d.content) { answer += d.content; var shown = clean(answer); if (shown) { bubble.classList.remove('typing'); bubble.textContent = shown; scroll(); } }
+                if (j.timings) timings = j.timings;
+              } catch (err) {}
+            });
+            return pump();
           });
-          return pump();
-        });
-      }
-      return pump();
-    }).then(function () {
+        }
+        return pump();
+      }).catch(function (err) {
+        // retry only connection problems, and only if nothing was received yet
+        var netErr = err.message === 'net' || (err.name === 'TypeError' && !answer);
+        if (netErr && !answer && n < TRIES && !(ctrl && ctrl.signal.aborted)) {
+          bubble.textContent = 'Connection hiccup – retrying (' + (n + 1) + '/' + TRIES + ')…';
+          return wait(2500 * n).then(function () { bubble.textContent = 'Thinking…'; return attempt(n + 1); });
+        }
+        if (netErr && !answer) {
+          throw new Error(err.code === 502 ? 'The AI is asleep. On the phone run: phone-ai start'
+            : "Couldn't reach the phone – its internet probably dropped for a moment. Try again in a few seconds.");
+        }
+        throw err;
+      });
+    }
+
+    attempt(1).then(function () {
       answer = clean(answer); history.push({ role: 'assistant', content: answer });
       var secs = ((Date.now() - started) / 1000).toFixed(1);
       meta(timings && timings.predicted_per_second ? timings.predicted_per_second.toFixed(1) + ' tokens/s · ' + secs + ' s' : secs + ' s');
     }).catch(function (err) {
       if (err.message === 'auth') return;
-      if (err.name === 'AbortError') { if (answer) history.push({ role: 'assistant', content: answer }); else bubble.parentNode.remove(); meta('Stopped'); }
+      if (err.name === 'AbortError') { if (answer) history.push({ role: 'assistant', content: clean(answer) }); else bubble.parentNode.remove(); meta('Stopped'); }
+      else if (answer) { history.push({ role: 'assistant', content: clean(answer) }); meta('Connection dropped – answer cut short'); }
       else { bubble.parentNode.remove(); history.pop(); note(err.message || 'Could not reach the AI.'); }
     }).then(function () { ctrl = null; busy(false); health(); });
   }
