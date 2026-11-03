@@ -266,10 +266,17 @@
       $('sendinfo').textContent = 'Send failed (' + err + '). Will retry. Waiting: ' + q.length;
       setStatus(running ? 'Running - offline' : 'Not started', 'warn');
     };
-    // text/plain + no-cors = no CORS preflight, works with Google Apps Script.
+    // text/plain avoids a CORS preflight; Apps Script replies with readable JSON.
     if (window.fetch) {
-      fetch(cfg.endpoint, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
-        .then(done).catch(function (e) { fail(e.message || 'network'); });
+      fetch(cfg.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: body })
+        .then(function (res) { return res.text(); })
+        .then(function (txt) {
+          var r = null; try { r = JSON.parse(txt); } catch (e) {}
+          if (r && r.ok) { done(); return; }
+          if (r && r.error) { fail('sheet says: ' + r.error); log('Sheet replied: ' + r.error); return; }
+          fail('sheet error'); log('Sheet replied with an error page: ' + txt.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 160));
+        })
+        .catch(function (e) { fail((e && e.message) || 'network'); log('Could not reach the sheet. Check the URL ends in /exec and access is "Anyone".'); });
     } else {
       var x = new XMLHttpRequest(); x.open('POST', cfg.endpoint);
       x.setRequestHeader('Content-Type', 'text/plain;charset=utf-8');
