@@ -40,7 +40,7 @@ Files:
 
 ### B. Turn on the free web page (one time, on GitHub)
 1. Open the repo on GitHub → **Settings → Pages**.
-2. Source: **Deploy from a branch** → Branch: `claude/ai-old-devices-projects-2wu7gm`, folder **/(root)** → **Save**.
+2. Source: **Deploy from a branch** → Branch: `room-sensor`, folder **/(root)** → **Save**.
 3. After ~1 minute the page is live at **https://arpangpta.github.io/Mobilecheck/**
 
 ### C. Start the old phone
